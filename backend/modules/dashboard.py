@@ -18,9 +18,9 @@ class Module(BaseModule):
             
         # Tính toán các chỉ số (tạm thời giả lập logic tăng trưởng cho đến khi có module Transaction)
         return {
-            "total_assets": total,
-            "profit_loss": -31000000, # Giả lập dựa trên spec của bạn
-            "profit_percent": -18,
-            "goal_progress": 28.6,
-            "message": "Dữ liệu được cập nhật từ hệ thống Core."
-        }
+    "total_assets": total / 1000000, # Chia 1 triệu để hiển thị đúng đơn vị bạn muốn
+    "profit_loss": -31,             # Thêm để khớp Layout mục 10
+    "profit_percent": -18,          # Thêm để khớp Layout mục 10
+    "goal_progress": 28.6,          # Thêm để khớp Layout mục 10
+    "message": "Cập nhật từ hệ thống Core"
+}
