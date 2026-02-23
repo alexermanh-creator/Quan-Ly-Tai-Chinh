@@ -29,11 +29,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     # Duyệt module để khớp tên nút bấm
-    for m_id, m_instance in modules.items():
-        if m_instance.get_info()['name'] == text:
-            result = m_instance.run(user_id)
-            await format_response(update, m_id, result)
-            return
+    # --- PHẦN MỚI THÊM VÀO ---
+    # Kiểm tra nếu tin nhắn có số (ví dụ: 500, 28.5) hoặc có khoảng trắng (ví dụ: hpg 500)
+    if any(char.isdigit() for char in text) or " " in text:
+        if 'transaction' in modules:
+            # Gửi tin nhắn sang Module Transaction để "Parser nhanh"
+            res = modules['transaction'].run(user_id, text)
+            
+            # Nếu kết quả trả về là chữ (Text), thì gửi cho người dùng
+            if isinstance(res, str):
+                await update.message.reply_text(res)
+                return
+    # --------------------------
 
     # Nếu tin nhắn có số -> Hiểu là lệnh nhập giao dịch nhanh
     if any(char.isdigit() for char in text):
@@ -72,3 +79,4 @@ async def format_response(update: Update, m_id: str, result: dict):
             f"🥇 Khác: -10 triệu (-7%)"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
+
