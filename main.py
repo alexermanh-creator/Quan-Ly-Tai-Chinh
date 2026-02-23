@@ -1,23 +1,13 @@
 import os
-from backend.module_loader import load_all_modules
-
-class FinancePlatform:
-    def __init__(self):
-        print("--- Khởi động Hệ thống Quản lý Tài chính Pro ---")
-        # Khởi tạo bộ quét module
-        self.modules = load_all_modules()
-        print(f"--- Hệ thống sẵn sàng với {len(self.modules)} module ---")
-
-    def execute_feature(self, module_id, user_id, data=None):
-        """Hàm điều phối: Gọi module tương ứng khi có yêu cầu"""
-        if module_id in self.modules:
-            return self.modules[module_id].run(user_id, data)
-        else:
-            return "Lỗi: Module không tồn tại hoặc chưa được cắm vào."
+from app.telegram.bot_client import TelegramClient
 
 if __name__ == "__main__":
-    # Khởi tạo nền tảng
-    app = FinancePlatform()
+    print("--- Đang khởi động Platform Multi-Client ---")
     
-    # Ở giai đoạn này, danh sách module sẽ trống (0 module)
-    # vì chúng ta chưa thêm module nào vào thư mục backend/modules.
+    # Kiểm tra biến môi trường
+    if not os.getenv("TELEGRAM_TOKEN"):
+        print("❌ LỖI: Chưa cấu hình TELEGRAM_TOKEN trên Railway!")
+    else:
+        # Khởi chạy Telegram Client
+        client = TelegramClient()
+        client.run()
