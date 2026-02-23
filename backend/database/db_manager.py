@@ -12,18 +12,35 @@ class DatabaseManager:
         return sqlite3.connect(self.db_path)
 
     def init_db(self):
-        """Khởi tạo các bảng dữ liệu cơ bản nếu chưa có"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            # Bảng lưu số dư tài sản theo loại (Stock, Crypto, Cash...)
+            
+            # 1. Bảng lưu số dư tài sản (đã có)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS assets (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    asset_type TEXT NOT NULL,
-                    value REAL NOT NULL,
-                    last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    asset_type TEXT UNIQUE,
+                    value REAL
+                )
+            ''')
+
+            # 2. Bảng lưu Lịch sử giao dịch (Bảng mới chúng ta cần)
+            # Tìm từ khóa: CREATE TABLE IF NOT EXISTS transactions
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    asset_type TEXT,
+                    ticker TEXT,
+                    amount REAL,
+                    price REAL,
+                    total_value REAL,
+                    date TEXT,
+                    note TEXT
                 )
             ''')
             conn.commit()
+            print("✅ Database đã được khởi tạo và cập nhật bảng Transactions.")
+
 
 db = DatabaseManager()
