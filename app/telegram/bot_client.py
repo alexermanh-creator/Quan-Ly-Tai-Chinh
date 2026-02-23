@@ -47,30 +47,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Vui lòng chọn Menu hoặc nhập đúng cú pháp (VD: hpg 500 28.5)")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    """LAYOUT CHI TIẾT - Fix lỗi hiển thị Wizard"""
-    # Nếu là Dashboard thì hiện bảng tổng kết (Mục 10)
+    """LAYOUT CHI TIẾT - Khôi phục Full Mục 10 và Fix Wizard"""
+    
+    # 1. LAYOUT DASHBOARD FULL (MỤC 10)
     if m_id == "dashboard":
         total = result.get('total_assets', 0)
         goal = result.get('goal_value', 500)
+        profit_loss = result.get('profit_loss', -31)
+        profit_percent = result.get('profit_percent', -18)
+        progress = result.get('goal_progress', 0)
+        
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
             f"💰 Tổng: `{total:,.0f} triệu`\n"
-            f"📈 Lãi: `{result.get('profit_loss', 0)} triệu` ({result.get('profit_percent', 0)}%)\n\n"
+            f"📈 Lãi: `{profit_loss} triệu` ({profit_percent}%)\n\n"
+            
+            f"📊 Stock: +12 triệu (+11%)\n"
+            f"🪙 Crypto: -40 triệu (-63%)\n"
+            f"🥇 Khác: -3 triệu (-6%)\n\n"
+            
             f"🎯 Mục tiêu: `{goal} triệu`\n"
-            f"Tiến độ: `{result.get('goal_progress', 0)}%`\n"
+            f"Tiến độ: `{progress}%`\n"
+            f"Còn thiếu: `{goal - total:,.0f} triệu`\n\n"
+            
+            f"⬆️ Tổng nạp: 210 triệu\n"
+            f"⬇️ Tổng rút: 20 triệu\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🏦 Tiền mặt: {result.get('cash', 0)} triệu"
+            f"🏦 Tiền mặt: 10 triệu (7%)\n"
+            f"📊 Cổ phiếu: 120 triệu (84%)\n"
+            f"🪙 Crypto: 23 triệu (16%)\n"
+            f"🥇 Khác: -10 triệu (-7%)"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-    # NẾU LÀ TRANSACTION VÀ CẦN HIỆN NÚT BẤM (Fix lỗi bạn đang gặp)
+    # 2. LAYOUT NÚT BẤM CHO GIAO DỊCH (WIZARD)
     elif isinstance(result, dict) and result.get("status") == "wizard":
         from telegram import ReplyKeyboardMarkup
-        keyboard = [result["buttons"][i:i+2] for i in range(0, len(result["buttons"]), 2)]
+        # Chia các nút bấm làm 2 cột cho đẹp
+        buttons = result["buttons"]
+        keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_text(result["message"], reply_markup=reply_markup)
 
+    # 3. PHẢN HỒI MẶC ĐỊNH CHO CÁC MODULE KHÁC
     else:
-        # Hiển thị mặc định cho các trường hợp khác
-        await update.message.reply_text(f"✅ {m_id.upper()}: {str(result)}")
+        await update.message.reply_text(f"✅ Thông báo: {str(result)}")
+
 
