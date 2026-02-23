@@ -1,18 +1,13 @@
 import os
-import logging
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from backend.module_loader import load_all_modules
 
-# Khởi tạo logging để bạn xem lỗi trên Railway
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Nạp module
+# Nạp tất cả module từ thư mục backend/modules
 modules = load_all_modules()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Layout Menu chính theo Mục 5 của bạn"""
+    """LAYOUT DASHBOARD - Theo Mục 5 tài liệu"""
     keyboard = [
         ["💼 Tài sản của bạn"],
         ["📊 Cổ phiếu", "🪙 Crypto"],
@@ -23,55 +18,51 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "💼 *QUẢN LÝ TÀI SẢN VÀ ĐẦU TƯ*\nHệ thống đã sẵn sàng.",
+        "💼 *QUẢN LÝ TÀI SẢN VÀ ĐẦU TƯ*",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Bộ điều phối tin nhắn - Đã thêm DEBUG để kiểm tra lỗi Matching"""
+    """ĐIỀU PHỐI TIN NHẮN - Khớp nút bấm hoặc Nhập liệu"""
     text = update.message.text.strip()
     user_id = update.effective_user.id
-    
-    print(f"DEBUG: Nhận tin nhắn từ User: [{text}]")
 
-    # 1. Khớp lệnh dựa trên nút bấm (Matching logic)
+    # Duyệt module để khớp tên nút bấm
     for m_id, m_instance in modules.items():
-        m_info = m_instance.get_info()
-        print(f"DEBUG: Đang so sánh [{text}] với [{m_info['name']}]")
-        
-        if text == m_info['name']:
+        if m_instance.get_info()['name'] == text:
             result = m_instance.run(user_id)
             await format_response(update, m_id, result)
             return
 
-    # 2. Khớp lệnh nhập liệu (Nếu có số tiền)
+    # Nếu tin nhắn có số -> Hiểu là lệnh nhập giao dịch nhanh
     if any(char.isdigit() for char in text):
         if 'transaction' in modules:
             res = modules['transaction'].run(user_id, text)
             await update.message.reply_text(res)
             return
 
-    await update.message.reply_text("❓ Tôi không hiểu lệnh này. Vui lòng bấm Menu.")
+    await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Vui lòng chọn Menu.")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    """Layout Chi tiết theo Mục 10 của bạn"""
+    """LAYOUT TÀI SẢN CHI TIẾT - Theo Mục 10 tài liệu"""
     if m_id == "dashboard":
-        # Công thức tính "Còn thiếu" dựa trên mục tiêu 500 triệu
-        goal = 500
-        total = result.get('total_assets', 0)
-        missing = goal - total
+        total = result['total_assets']
+        goal = result['goal_value']
         
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
             f"💰 Tổng: `{total:,.0f} triệu`\n"
-            f"📈 Lãi: `{result.get('profit_loss', 0):,.0f} triệu` ({result.get('profit_percent', 0)}%)\n\n"
+            f"📈 Lãi: `{result['profit_loss']} triệu` ({result['profit_percent']}%)\n\n"
+            
             f"📊 Stock: +12 triệu (+11%)\n"
             f"🪙 Crypto: -40 triệu (-63%)\n"
             f"🥇 Khác: -3 triệu (-6%)\n\n"
+            
             f"🎯 Mục tiêu: `{goal} triệu`\n"
-            f"Tiến độ: `{result.get('goal_progress', 0)}%`\n"
-            f"Còn thiếu: `{missing:,.0f} triệu`\n\n"
+            f"Tiến độ: `{result['goal_progress']}%`\n"
+            f"Còn thiếu: `{goal - total:,.0f} triệu`\n\n"
+            
             f"⬆️ Tổng nạp: 210 triệu\n"
             f"⬇️ Tổng rút: 20 triệu\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -81,5 +72,3 @@ async def format_response(update: Update, m_id: str, result: dict):
             f"🥇 Khác: -10 triệu (-7%)"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(f"✅ Kết quả từ {m_id}: {result}")
