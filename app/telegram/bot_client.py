@@ -62,33 +62,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Tôi chưa hiểu lệnh này.")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    # Luôn đính kèm Menu chính khi trả về Dashboard
+    # Đảm bảo MAIN_MENU đã được định nghĩa ở đầu file bot_client.py
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
 
     if m_id == "dashboard":
+        # Hứng dữ liệu thật từ module dashboard trả về
         total = result.get('total_assets', 0)
         goal = result.get('goal_value', 500)
         
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
-            f"💰 Tổng: `{total:,.0f} triệu`\n"
-            f"📈 Lãi: `{result.get('profit_loss', -31)} triệu` ({result.get('profit_percent', -18)}%)\n\n"
+            f"💰 Tổng: `{total:,.1f} triệu`\n"
+            f"📈 Lãi: `{result.get('profit_loss', 0):,.1f} triệu` ({result.get('profit_percent', 0):,.1f}%)\n\n"
             
-            f"📊 Stock: +12 triệu (+11%)\n"
-            f"🪙 Crypto: -40 triệu (-63%)\n"
-            f"🥇 Khác: -3 triệu (-6%)\n\n"
+            f"📊 Stock: {result.get('stock_val', 0):,.1f} triệu\n"
+            f"🪙 Crypto: {result.get('crypto_val', 0):,.1f} triệu\n"
+            f"🥇 Khác: {result.get('other_val', 0):,.1f} triệu\n\n"
             
             f"🎯 Mục tiêu: `{goal} triệu`\n"
-            f"Tiến độ: `{result.get('goal_progress', 0)}%`\n"
-            f"Còn thiếu: `{goal - total:,.0f} triệu`\n\n"
+            f"Tiến độ: `{result.get('goal_progress', 0):,.1f}%`\n"
+            f"Còn thiếu: `{max(0, goal - total):,.1f} triệu`\n\n"
             
-            f"⬆️ Tổng nạp: 210 triệu\n"
-            f"⬇️ Tổng rút: 20 triệu\n"
+            f"⬆️ Tổng nạp: {result.get('total_in', 0):,.1f} triệu\n"
+            f"⬇️ Tổng rút: {result.get('total_out', 0):,.1f} triệu\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🏦 Tiền mặt: 10 triệu (7%)\n"
-            f"📊 Cổ phiếu: 120 triệu (84%)\n"
-            f"🪙 Crypto: 23 triệu (16%)\n"
-            f"🥇 Khác: -10 triệu (-7%)"
+            f"🏦 Tiền mặt: {result.get('cash_val', 0):,.1f} triệu\n"
+            f"📊 Cổ phiếu: {result.get('stock_val', 0):,.1f} triệu\n"
+            f"🪙 Crypto: {result.get('crypto_val', 0):,.1f} triệu\n"
+            f"🥇 Khác: {result.get('other_val', 0):,.1f} triệu"
         )
         await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
 
@@ -97,3 +98,7 @@ async def format_response(update: Update, m_id: str, result: dict):
         keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
+    
+    else:
+        # Phản hồi cho các module khác chưa có giao diện riêng
+        await update.message.reply_text(f"✅ {str(result)}")
