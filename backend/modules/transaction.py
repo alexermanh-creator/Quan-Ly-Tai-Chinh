@@ -69,15 +69,17 @@ class Module(BaseModule):
         return f"✅ Đã ghi nhận {action} {abs(amount)} {ticker} giá {price:,.0f}. (Dữ liệu đã được bảo toàn)"
 
     def _process_quick_cash(self, user_id, value):
-        """Xử lý nạp rút tiền mặt"""
+        """Xử lý nạp rút tiền mặt - Đã fix lỗi Syntax"""
         with db.get_connection() as conn:
             cursor = conn.cursor()
+            # 1. Lưu giao dịch
             cursor.execute('''
                 INSERT INTO transactions (user_id, asset_type, ticker, amount, total_value, date)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (user_id, "CASH", "VND", 1, value, datetime.now().strftime("%Y-%m-%d")))
             
-            cursor.execute("INSERT OR IGNORE INTO assets (asset_type, value) VALUES (?, 0)", ("CASH",,))
+            # 2. Cập nhật số dư tài sản
+            cursor.execute("INSERT OR IGNORE INTO assets (asset_type, value) VALUES (?, 0)", ("CASH",))
             cursor.execute("UPDATE assets SET value = value + ? WHERE asset_type = ?", (value, "CASH"))
             conn.commit()
             
