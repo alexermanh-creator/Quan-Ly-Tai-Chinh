@@ -8,12 +8,21 @@ from backend.module_loader import load_all_modules
 modules = load_all_modules()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Giao diện Menu chính"""
-    keyboard = [[m.get_info()['name']] for m in modules.values()]
+    # Thay thế đoạn keyboard cũ bằng cấu trúc phân tầng này:
+    keyboard = [
+        ["💼 Tài sản của bạn"],             # Hàng 1: Nút to nhất
+        ["📊 Cổ phiếu", "🪙 Crypto"],        # Hàng 2: 2 nút
+        ["🥇 Khác", "➕ Giao dịch"],         # Hàng 3: 2 nút
+        ["📜 Lịch sử", "🎯 Mục tiêu"],       # Hàng 4: 2 nút
+        ["📈 Báo cáo", "⚙️ Cài đặt"],        # Hàng 5: 2 nút
+        ["🤖 Trợ lý AI", "🏠 Home"]           # Hàng 6: 2 nút
+    ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    # Sửa lại nội dung tin nhắn chào mừng cho Pro
     await update.message.reply_text(
-        "💎 *HỆ THỐNG TÀI CHÍNH PERSONAL PRO*\n"
-        "Chào mừng bạn quay trở lại. Vui lòng chọn tính năng:",
+        "💼 *QUẢN LÝ TÀI SẢN VÀ ĐẦU TƯ*\n"
+        "Hệ thống đã sẵn sàng phục vụ.",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
@@ -44,18 +53,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def format_response(update: Update, m_id: str, result: dict):
     """Hàm làm đẹp dữ liệu trước khi gửi cho khách hàng"""
     if m_id == "dashboard":
+        # Các biến này sẽ lấy từ result (Module Dashboard trả về)
         msg = (
-            f"📊 *BẢNG ĐIỀU KHIỂN TÀI SẢN*\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"💰 Tổng tài sản: `{result['total_assets']:,.0f} VNĐ`\n"
-            f"📈 Lãi/Lỗ: `{result['profit_loss']:,.0f} VNĐ` ({result['profit_percent']}%)\n"
-            f"🎯 Tiến độ: {result['goal_progress']}%\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"ℹ️ _{result['message']}_"
+            f"💼 *TÀI SẢN CỦA BẠN*\n"
+            f"💰 Tổng: `{result['total_assets']:,.0f} triệu`\n"
+            f"📈 Lãi: `{result['profit_loss']:,.0f} triệu` ({result['profit_percent']}%)\n\n"
+            
+            f"📊 Stock: +12 triệu (+11%)\n"
+            f"🪙 Crypto: -40 triệu (-63%)\n"
+            f"🥇 Khác: -3 triệu (-6%)\n\n"
+            
+            f"🎯 Mục tiêu: `500 triệu`\n"
+            f"Tiến độ: `{result['goal_progress']}%`\n"
+            f"Còn thiếu: `{500 - result['total_assets']:,.0f} triệu`\n\n"
+            
+            f"⬆️ Tổng nạp: 210 triệu\n"
+            f"⬇️ Tổng rút: 20 triệu\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🏦 Tiền mặt: 10 triệu (7%)\n"
+            f"📊 Cổ phiếu: 120 triệu (84%)\n"
+            f"🪙 Crypto: 23 triệu (16%)\n"
+            f"🥇 Khác: -10 triệu (-7%)"
         )
+        await update.message.reply_text(msg, parse_mode="Markdown")
         await update.message.reply_text(msg, parse_mode="Markdown")
     elif m_id == "system_health":
         msg = f"✅ *HỆ THỐNG:* {result['status']}\n🕒 *GIỜ:* {result['timestamp']}\n💬 {result['message']}"
         await update.message.reply_text(msg, parse_mode="Markdown")
     else:
         await update.message.reply_text(str(result))
+
