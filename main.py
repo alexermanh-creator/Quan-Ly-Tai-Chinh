@@ -6,6 +6,13 @@ if __name__ == "__main__":
     
     try:
         client = TelegramClient()
-        client.run()
+        app = client.build_application()
+        
+        if app:
+            print("🚀 Bot đang bắt đầu nhận tin nhắn (Polling)...")
+            app.run_polling(drop_pending_updates=True)
+        else:
+            print("❌ Không thể khởi tạo Application.")
+            
     except Exception as e:
         print(f"❌ LỖI KHỞI CHẠY: {e}")
