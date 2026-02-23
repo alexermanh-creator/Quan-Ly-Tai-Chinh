@@ -17,4 +17,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    app.run_polling(drop_pending_updates=True)
+    print("🚀 Đang khởi động và dọn dẹp kết nối cũ...")
+        # Lệnh này yêu cầu Telegram xóa các tin nhắn cũ và ngắt kết nối xung đột
+        app.run_polling(drop_pending_updates=True, stop_signals=None)
+
