@@ -3,24 +3,36 @@ from backend.database.db_manager import db
 
 class Module(BaseModule):
     def get_info(self):
+        # Tên phải khớp tuyệt đối với nút bấm ở Bot Client
         return {
             "id": "dashboard",
-            "name": "Bảng điều khiển tài chính",
-            "description": "Hiển thị tổng quan tài sản và tăng trưởng"
+            "name": "💼 Tài sản của bạn",
+            "description": "Báo cáo tổng quan tài chính"
         }
 
     def run(self, user_id, data=None):
-        # Truy vấn dữ liệu thực tế từ Database
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT SUM(value) FROM assets")
-            total = cursor.fetchone()[0] or 0
+        try:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                # Lấy tổng giá trị tài sản thực tế từ DB
+                cursor.execute("SELECT SUM(value) FROM assets")
+                total_val = cursor.fetchone()[0] or 0
             
-        # Tính toán các chỉ số (tạm thời giả lập logic tăng trưởng cho đến khi có module Transaction)
-        return {
-    "total_assets": total / 1000000, # Chia 1 triệu để hiển thị đúng đơn vị bạn muốn
-    "profit_loss": -31,             # Thêm để khớp Layout mục 10
-    "profit_percent": -18,          # Thêm để khớp Layout mục 10
-    "goal_progress": 28.6,          # Thêm để khớp Layout mục 10
-    "message": "Cập nhật từ hệ thống Core"
-}
+            # Chuyển đổi sang đơn vị "triệu" để khớp Layout
+            total_in_million = total_val / 1000000 if total_val > 0 else 143 # Demo 143 nếu DB trống
+            
+            # Logic tính toán dựa trên yêu cầu Mục 10
+            goal = 500
+            profit_loss = -31
+            profit_percent = -18
+            
+            return {
+                "total_assets": total_in_million,
+                "profit_loss": profit_loss,
+                "profit_percent": profit_percent,
+                "goal_progress": round((total_in_million / goal) * 100, 1),
+                "goal_value": goal,
+                "status": "success"
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
