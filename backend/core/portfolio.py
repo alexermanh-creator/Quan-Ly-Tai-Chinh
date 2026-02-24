@@ -5,7 +5,7 @@ class PortfolioManager:
     def __init__(self, user_id):
         self.user_id = user_id
         self.analytics = StockAnalytics()
-        self.usd_rate = 26300  # Tỷ giá chuẩn đồng bộ toàn hệ thống
+        self.usd_rate = 26300  # Đồng bộ tỷ giá với Dashboard
 
     def get_stock_portfolio(self):
         return self._get_asset_portfolio(asset_type='STOCK', price_table='stock_prices')
@@ -17,12 +17,18 @@ class PortfolioManager:
         with db.get_connection() as conn:
             cursor = conn.cursor()
             
-            # 1. Lấy giá thị trường hiện tại
+            # --- FIX: Trong bảng crypto_prices dùng 'symbol', bảng stock_prices dùng 'ticker' ---
+            id_col = 'symbol' if is_crypto else 'ticker'
             price_col = 'price_usd' if is_crypto else 'current_price'
-            cursor.execute(f"SELECT UPPER(ticker), {price_col} FROM {price_table}")
-            market_prices = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            market_prices = {}
+            try:
+                cursor.execute(f"SELECT UPPER({id_col}), {price_col} FROM {price_table}")
+                market_prices = {row[0]: row[1] for row in cursor.fetchall()}
+            except:
+                pass # Fallback về giá giao dịch nếu bảng giá lỗi
 
-            # 2. Lấy toàn bộ lịch sử giao dịch
+            # Lấy lịch sử giao dịch
             cursor.execute(f'''
                 SELECT UPPER(ticker), amount, price, total_value, COALESCE(UPPER(type), 'BUY') 
                 FROM transactions 
