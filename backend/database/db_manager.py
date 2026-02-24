@@ -15,7 +15,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # 1. Bảng lưu số dư tài sản (đã có)
+            # 1. Bảng lưu số dư tài sản (Tổng hợp)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS assets (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,23 +24,42 @@ class DatabaseManager:
                 )
             ''')
 
-            # 2. Bảng lưu Lịch sử giao dịch (Bảng mới chúng ta cần)
-            # Tìm từ khóa: CREATE TABLE IF NOT EXISTS transactions
+            # 2. Bảng Lịch sử giao dịch (Đã bổ sung cột TYPE)
+            # amount: Số lượng (Qty) | total_value: Tổng tiền (VNĐ hoặc quy đổi)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER,
-                    asset_type TEXT,
-                    ticker TEXT,
-                    amount REAL,
-                    price REAL,
-                    total_value REAL,
+                    asset_type TEXT, -- STOCK, CRYPTO, CASH, OTHER
+                    type TEXT,       -- BUY, SELL, IN, OUT
+                    ticker TEXT,     -- VNM, BTC, ETH...
+                    amount REAL,     -- Số lượng
+                    price REAL,      -- Giá khớp (USD cho Crypto, VNĐ cho Stock)
+                    total_value REAL, -- Tổng giá trị quy đổi VNĐ
                     date TEXT,
                     note TEXT
                 )
             ''')
-            conn.commit()
-            print("✅ Database đã được khởi tạo và cập nhật bảng Transactions.")
 
+            # 3. Bảng lưu giá Crypto (Phục vụ module Crypto)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS crypto_prices (
+                    symbol TEXT PRIMARY KEY,
+                    price_usd REAL,
+                    last_update TEXT
+                )
+            ''')
+
+            # 4. Bảng lưu giá Stock (Phục vụ module Stock)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS stock_prices (
+                    ticker TEXT PRIMARY KEY,
+                    current_price REAL,
+                    last_update TEXT
+                )
+            ''')
+
+            conn.commit()
+            print("✅ Database đã được khởi tạo chuẩn hóa cho Multi-Module.")
 
 db = DatabaseManager()
