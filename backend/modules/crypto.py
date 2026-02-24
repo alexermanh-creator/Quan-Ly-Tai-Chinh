@@ -21,7 +21,7 @@ class Module(BaseModule):
         if not positions:
             return {
                 "status": "wizard",
-                "message": "🪙 *DANH MỤC CRYPTO*\n\nBạn chưa có tài sản nào. Gõ lệnh: `btc 0.1 95000`",
+                "message": "🪙 *DANH MỤC CRYPTO*\n\nBạn chưa có tài sản nào. Hãy nhập lệnh nhanh, ví dụ: `btc 0.5 95000`",
                 "buttons": ["➕ Giao dịch", "🏠 Trang chủ"]
             }
 
@@ -36,23 +36,31 @@ class Module(BaseModule):
             f"⬇️ Tổng rút: {self.format_money(pf['total_out'])}\n"
         )
 
+        # --- PHẦN PHÂN TÍCH ---
         if s.get('best'):
-            weight = (s['largest']['market_value'] / s['total_value'] * 100) if s['total_value'] > 0 else 0
+            best, worst, largest = s['best'], s['worst'], s['largest']
+            weight = (largest['market_value'] / s['total_value'] * 100) if s['total_value'] > 0 else 0
             msg += (
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"🏆 Coin tốt nhất: {s['best']['ticker']} ({s['best']['roi']:+.1f}%)\n"
-                f"📉 Coin kém nhất: {s['worst']['ticker']} ({s['worst']['roi']:+.1f}%)\n"
-                f"📊 Tỉ trọng lớn nhất: {s['largest']['ticker']} ({weight:.1f}%)\n"
+                f"🏆 Coin tốt nhất: {best['ticker']} ({best['roi']:+.1f}%)\n"
+                f"📉 Coin kém nhất: {worst['ticker']} ({worst['roi']:+.1f}%)\n"
+                f"📊 Tỉ trọng lớn nhất: {largest['ticker']} ({weight:.1f}%)\n"
             )
 
+        # --- CHI TIẾT TỪNG COIN ---
         for p in positions:
             msg += (
                 f"\n────────────\n\n"
                 f"*{p['ticker']}*\n\n"
                 f"SL: `{p['qty']}`\n\n"
                 f"Giá vốn TB: `${p['avg_price']:,.1f}`\n\n"
+                f"Giá hiện tại: `${p['current_price']:,.1f}`\n\n"
                 f"Giá trị: {self.format_money(p['market_value'])}\n\n"
                 f"Lãi: {self.format_money(p['profit'])} ({p['roi']:+.1f}%)\n"
             )
 
-        return {"status": "wizard", "message": msg, "buttons": ["➕ Giao dịch", "🏠 Trang chủ"]}
+        return {
+            "status": "wizard",
+            "message": msg + "\n\n📱 *MENU CRYPTO*",
+            "buttons": ["🔄 Cập nhật giá", "➕ Giao dịch", "📈 Báo cáo", "🏠 Trang chủ"]
+        }
