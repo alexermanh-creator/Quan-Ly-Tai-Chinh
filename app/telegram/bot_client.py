@@ -30,39 +30,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # A. LOGIC QUAY VỀ TRANG CHỦ HOẶC HỦY
+    # A. LOGIC QUAY VỀ TRANG CHỦ HOẶC BACK
     if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # B. XỬ LÝ NÚT BẤM TRONG MENU CON CỦA STOCK
-    # Nếu đang ở trong Stock Module và bấm "➕ Giao dịch"
+    # B. XỬ LÝ LỆNH NHẬP TAY ƯU TIÊN (STOCK: xoa, gia...)
+    # Nếu tin nhắn bắt đầu bằng xoa hoặc gia, gửi thẳng vào Stock module
+    if text.lower().startswith("xoa ") or text.lower().startswith("gia "):
+        if 'stock' in modules:
+            res_stock = modules['stock'].run(user_id, text)
+            # Nếu trả về string (thông báo xóa thành công)
+            if isinstance(res_stock, str):
+                await update.message.reply_text(res_stock)
+                # Sau khi xóa xong, tự động gọi lại danh mục để cập nhật giao diện
+                refresh_pf = modules['stock'].run(user_id)
+                await format_response(update, 'stock', refresh_pf)
+                return
+
+    # C. XỬ LÝ NÚT BẤM TRONG MENU CON CỦA STOCK (Giao dịch nhanh)
     if text == "➕ Giao dịch" and 'transaction' in modules:
         result = modules['transaction'].run(user_id)
         await format_response(update, 'transaction', result)
         return
 
-    # C. ĐIỀU HƯỚNG THEO TÊN MODULE (DASHBOARD, STOCK, CRYPTO...)
+    # D. ĐIỀU HƯỚNG THEO TÊN MODULE (BẤM NÚT MENU CHÍNH)
     for m_id, m_instance in modules.items():
         if m_instance.get_info()['name'] == text:
             result = m_instance.run(user_id)
             await format_response(update, m_id, result)
             return
 
-    # D. XỬ LÝ CÁC LỆNH TRONG WIZARD HOẶC PARSER NHANH
-    # Ưu tiên kiểm tra xem có phải lệnh của Stock Module (Cập nhật giá, Xóa mã...) không
+    # E. KIỂM TRA LỆNH WIZARD CỦA STOCK (Nút bấm trong stock menu)
     if 'stock' in modules:
-        # Chuyển tiếp text vào stock module để kiểm tra lệnh con
         res_stock = modules['stock'].run(user_id, text)
         if isinstance(res_stock, dict) and res_stock.get("status") == "wizard":
-             # Nếu text khớp với một lệnh trong Stock (VD: Cập nhật giá), nó sẽ trả về kết quả
              if text in ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]:
                  await format_response(update, 'stock', res_stock)
                  return
 
-    # Cuối cùng mới chuyển vào Transaction Parser
+    # F. CUỐI CÙNG MỚI CHUYỂN VÀO TRANSACTION PARSER
     if 'transaction' in modules:
         res = modules['transaction'].run(user_id, text)
         if isinstance(res, str):
@@ -80,10 +89,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Hãy chọn Menu hoặc nhập lệnh nhanh.")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    """GIAO DIỆN HIỂN THỊ CHI TIẾT (MỤC 10 & STOCK MENU)"""
+    """GIAO DIỆN HIỂN THỊ CHI TIẾT"""
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
 
-    # NHÁNH 1: DASHBOARD CHÍNH
     if m_id == "dashboard":
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
@@ -106,20 +114,16 @@ async def format_response(update: Update, m_id: str, result: dict):
         )
         await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
 
-    # NHÁNH 2: MODULE CỔ PHIẾU (Xử lý cả String và Wizard Menu)
     elif m_id == "stock":
         if isinstance(result, dict) and result.get("status") == "wizard":
             buttons = result["buttons"]
-            # Tạo layout 2 cột cho nút bấm
             keyboard = [buttons[i:i+2] for i in range(0, len(buttons)-1, 2)]
-            # Dòng cuối là nút Back
             keyboard.append([buttons[-1]]) 
             markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
         else:
             await update.message.reply_text(result, reply_markup=main_markup, parse_mode="Markdown")
 
-    # NHÁNH 3: WIZARD GIAO DỊCH
     elif isinstance(result, dict) and result.get("status") == "wizard":
         buttons = result["buttons"]
         keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
