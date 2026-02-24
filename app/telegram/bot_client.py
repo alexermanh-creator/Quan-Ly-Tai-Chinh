@@ -31,14 +31,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH (DASHBOARD) ---
-    # Phải kiểm tra cái này đầu tiên để không bị Transaction Module "nuốt" mất
+    # Sử dụng logic so sánh text chính xác để Dashboard luôn hiện khi cần
     if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # --- ƯU TIÊN 2: CÁC NÚT BẤM TÊN MODULE (📊 Cổ phiếu, 🪙 Crypto...) ---
+    # --- ƯU TIÊN 2: KIỂM TRA NÚT BẤM CÁC MODULE (📊 Cổ phiếu, 🪙 Crypto...) ---
+    # Quét qua toàn bộ modules để xem text người dùng gõ có phải là tên module không
     for m_id, m_instance in modules.items():
         if m_instance.get_info()['name'] == text:
             result = m_instance.run(user_id)
@@ -46,7 +47,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     # --- ƯU TIÊN 3: LỆNH NHẬP TAY ĐẶC BIỆT CỦA STOCK (xoa, gia) ---
-    if text.lower().startswith("xoa ") or text.lower().startswith("gia "):
+    if text.lower().startswith(("xoa ", "gia ")):
         if 'stock' in modules:
             res_stock = modules['stock'].run(user_id, text)
             if isinstance(res_stock, str):
@@ -55,12 +56,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await format_response(update, 'stock', refresh_pf)
                 return
 
-    # --- ƯU TIÊN 4: XỬ LÝ GIAO DỊCH (WIZARD & PARSER NHANH) ---
+    # --- ƯU TIÊN 4: XỬ LÝ LỆNH WIZARD CỦA STOCK (Dành riêng cho menu con Stock) ---
+    if 'stock' in modules:
+        res_stock = modules['stock'].run(user_id, text)
+        if isinstance(res_stock, dict) and res_stock.get("status") == "wizard":
+             # Chỉ chặn nếu là các chức năng đặc thù của Stock
+             if text in ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]:
+                 await format_response(update, 'stock', res_stock)
+                 return
+
+    # --- ƯU TIÊN 5: XỬ LÝ GIAO DỊCH (WIZARD & PARSER NHANH) ---
+    # Mọi tin nhắn không khớp các menu trên sẽ trôi xuống đây
     if 'transaction' in modules:
         res = modules['transaction'].run(user_id, text)
         if isinstance(res, str):
-            # Nếu kết quả có từ khóa thành công hoặc quay về, hiện lại Dashboard
-            if any(x in res for x in ["Trang chủ", "thành công", "hủy", "ví tiền mặt"]):
+            # Nếu kết quả có từ khóa thành công hoặc quay về, tự động hiện lại Dashboard
+            # Thêm từ khóa "chiết khấu" để khớp với logic trừ tiền mặt mới
+            if any(x in res for x in ["Trang chủ", "thành công", "hủy", "ví tiền mặt", "chiết khấu"]):
                 result = modules['dashboard'].run(user_id)
                 await update.message.reply_text(res)
                 await format_response(update, 'dashboard', result)
@@ -102,18 +114,7 @@ async def format_response(update: Update, m_id: str, result: dict):
     elif m_id == "stock":
         if isinstance(result, dict) and result.get("status") == "wizard":
             buttons = result["buttons"]
+            # Sắp xếp nút bấm 2 cột
             keyboard = [buttons[i:i+2] for i in range(0, len(buttons)-1, 2)]
             keyboard.append([buttons[-1]]) 
             markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
-        else:
-            await update.message.reply_text(result, reply_markup=main_markup, parse_mode="Markdown")
-
-    elif isinstance(result, dict) and result.get("status") == "wizard":
-        buttons = result["buttons"]
-        keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
-        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-        await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
-    
-    else:
-        await update.message.reply_text(f"✅ {str(result)}")
