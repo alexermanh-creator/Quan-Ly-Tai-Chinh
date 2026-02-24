@@ -30,40 +30,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # A. LOGIC QUAY VỀ TRANG CHỦ HOẶC BACK
+    # A. ƯU TIÊN 1: LOGIC QUAY VỀ TRANG CHỦ / TÀI SẢN (NÚT MENU CHÍNH)
+    # Chúng ta bắt chính xác các text này để không cho nó trôi xuống module khác
     if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # B. XỬ LÝ LỆNH NHẬP TAY ƯU TIÊN (STOCK: xoa, gia...)
-    # Nếu tin nhắn bắt đầu bằng xoa hoặc gia, gửi thẳng vào Stock module
+    # B. ƯU TIÊN 2: LỆNH NHẬP TAY ĐẶC BIỆT (STOCK: xoa, gia...)
     if text.lower().startswith("xoa ") or text.lower().startswith("gia "):
         if 'stock' in modules:
             res_stock = modules['stock'].run(user_id, text)
-            # Nếu trả về string (thông báo xóa thành công)
             if isinstance(res_stock, str):
                 await update.message.reply_text(res_stock)
-                # Sau khi xóa xong, tự động gọi lại danh mục để cập nhật giao diện
                 refresh_pf = modules['stock'].run(user_id)
                 await format_response(update, 'stock', refresh_pf)
                 return
 
-    # C. XỬ LÝ NÚT BẤM TRONG MENU CON CỦA STOCK (Giao dịch nhanh)
-    if text == "➕ Giao dịch" and 'transaction' in modules:
-        result = modules['transaction'].run(user_id)
-        await format_response(update, 'transaction', result)
-        return
-
-    # D. ĐIỀU HƯỚNG THEO TÊN MODULE (BẤM NÚT MENU CHÍNH)
+    # C. ƯU TIÊN 3: CÁC NÚT BẤM MENU KHÁC (Cổ phiếu, Crypto, Giao dịch...)
+    # Kiểm tra xem text có trùng với tên Module nào không
     for m_id, m_instance in modules.items():
         if m_instance.get_info()['name'] == text:
+            # Nếu là nút "➕ Giao dịch", nó sẽ hiện menu wizard của giao dịch
             result = m_instance.run(user_id)
             await format_response(update, m_id, result)
             return
 
-    # E. KIỂM TRA LỆNH WIZARD CỦA STOCK (Nút bấm trong stock menu)
+    # D. ƯU TIÊN 4: LỆNH WIZARD ĐANG DANG DỞ TRONG STOCK
     if 'stock' in modules:
         res_stock = modules['stock'].run(user_id, text)
         if isinstance(res_stock, dict) and res_stock.get("status") == "wizard":
@@ -71,11 +65,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  await format_response(update, 'stock', res_stock)
                  return
 
-    # F. CUỐI CÙNG MỚI CHUYỂN VÀO TRANSACTION PARSER
+    # E. CUỐI CÙNG: MỚI CHUYỂN VÀO TRANSACTION PARSER (Lệnh nhanh như "nap 1ty" hoặc "btc 1 70000")
     if 'transaction' in modules:
         res = modules['transaction'].run(user_id, text)
         if isinstance(res, str):
-            if any(x in res for x in ["Trang chủ", "thành công", "hủy"]):
+            # Nếu kết quả trả về có từ khóa báo thành công/quay về, hiện lại Dashboard
+            if any(x in res for x in ["Trang chủ", "thành công", "hủy", "chiết khấu"]):
                 result = modules['dashboard'].run(user_id)
                 await update.message.reply_text(res)
                 await format_response(update, 'dashboard', result)
