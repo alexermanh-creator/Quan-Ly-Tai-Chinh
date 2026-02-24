@@ -9,6 +9,7 @@ class PortfolioManager:
     def get_stock_portfolio(self):
         with db.get_connection() as conn:
             cursor = conn.cursor()
+            # Lấy toàn bộ lịch sử giao dịch STOCK, sắp xếp theo thời gian
             cursor.execute('''
                 SELECT ticker, amount, price, total_value 
                 FROM transactions 
@@ -18,55 +19,70 @@ class PortfolioManager:
             records = cursor.fetchall()
 
         portfolio = {}
-        total_in = 0
-        total_out = 0
+        total_buy_val = 0  # Tổng tiền đã bỏ ra mua (Tổng nạp nhóm)
+        total_sell_val = 0 # Tổng tiền đã thu về khi bán (Tổng rút nhóm)
 
         for ticker, amount, price, total_val in records:
             if ticker not in portfolio:
                 portfolio[ticker] = {'qty': 0, 'cost': 0, 'last_price': 0}
             
-            portfolio[ticker]['qty'] += amount
-            # Lấy giá gần nhất làm giá giả lập hiện tại
-            portfolio[ticker]['last_price'] = abs(price) 
+            # Cập nhật giá gần nhất (giả lập giá hiện tại)
+            portfolio[ticker]['last_price'] = abs(price)
             
-            if amount > 0: # Lệnh Mua
+            if amount > 0: # LỆNH MUA
+                portfolio[ticker]['qty'] += amount
                 portfolio[ticker]['cost'] += abs(total_val)
-                total_in += abs(total_val)
-            else: # Lệnh Bán
-                # Tính giá vốn bình quân tại thời điểm bán để trừ vốn
-                if (portfolio[ticker]['qty'] - amount) > 0:
-                    avg_cost_before = portfolio[ticker]['cost'] / (portfolio[ticker]['qty'] - amount)
-                    portfolio[ticker]['cost'] -= abs(amount * avg_cost_before)
-                total_out += abs(total_val)
+                total_buy_val += abs(total_val)
+            
+            elif amount < 0: # LỆNH BÁN
+                # Trước khi trừ, tính giá vốn TB của 1 cổ phiếu
+                if portfolio[ticker]['qty'] > 0:
+                    avg_cost_per_unit = portfolio[ticker]['cost'] / portfolio[ticker]['qty']
+                    # Trừ bớt giá vốn tương ứng với số lượng bán ra
+                    portfolio[ticker]['cost'] -= abs(amount) * avg_cost_per_unit
+                    portfolio[ticker]['qty'] += amount # amount âm nên sẽ giảm qty
+                
+                total_sell_val += abs(total_val)
 
         positions = []
         for ticker, data in portfolio.items():
-            if data['qty'] <= 0: continue 
+            # Chỉ hiển thị những mã còn số dư trong kho
+            if data['qty'] > 0.001: 
+                market_value = data['qty'] * data['last_price']
+                cost_basis = data['cost']
+                profit = market_value - cost_basis
+                
+                positions.append({
+                    'ticker': ticker,
+                    'qty': data['qty'],
+                    'avg_price': cost_basis / data['qty'],
+                    'current_price': data['last_price'],
+                    'cost': cost_basis,
+                    'market_value': market_value,
+                    'profit': profit,
+                    'roi': self.analytics.calculate_roi(cost_basis, market_value)
+                })
 
-            market_value = data['qty'] * data['last_price']
-            avg_price = data['cost'] / data['qty'] if data['qty'] > 0 else 0
-            
-            positions.append({
-                'ticker': ticker,
-                'qty': data['qty'],
-                'avg_price': avg_price,
-                'current_price': data['last_price'],
-                'cost': data['cost'],
-                'market_value': market_value,
-                'profit': market_value - data['cost'],
-                'roi': self.analytics.calculate_roi(data['cost'], market_value)
-            })
+        # Sắp xếp danh mục theo giá trị thị trường giảm dần
+        positions.sort(key=lambda x: x['market_value'], reverse=True)
 
         return {
             'positions': positions,
-            'total_in': total_in,
-            'total_out': total_out,
+            'total_in': total_buy_val,
+            'total_out': total_sell_val,
             'summary': self._calculate_summary(positions)
         }
 
     def _calculate_summary(self, positions):
+        if not positions:
+            return {
+                'total_cost': 0, 'total_value': 0, 'total_profit': 0, 
+                'total_roi': 0, 'best': None, 'worst': None, 'largest': None
+            }
+
         total_cost = sum(p['cost'] for p in positions)
         total_value = sum(p['market_value'] for p in positions)
+        
         return {
             'total_cost': total_cost,
             'total_value': total_value,
