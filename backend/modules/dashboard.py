@@ -18,10 +18,13 @@ class Module(BaseModule):
             return f"{value:,.0f}đ"
 
     def run(self, user_id, data=None):
+        # Thiết lập tỷ giá tạm thời theo yêu cầu
+        EXCHANGE_RATE_USD = 26300 
+        
         with db.get_connection() as conn:
             cursor = conn.cursor()
             
-            # 1. Lấy tổng giá trị VNĐ thô từ DB
+            # 1. Lấy tổng giá trị thô từ DB (Lúc này Crypto đang là USD, Stock là VND)
             cursor.execute('''
                 SELECT asset_type, SUM(total_value) 
                 FROM transactions WHERE user_id = ? GROUP BY asset_type
@@ -31,12 +34,16 @@ class Module(BaseModule):
 
             cash_raw = data_map.get('CASH', 0)
             stock_raw = data_map.get('STOCK', 0)
-            crypto_raw = data_map.get('CRYPTO', 0)
+            crypto_usd_raw = data_map.get('CRYPTO', 0)
             other_raw = data_map.get('OTHER', 0)
             
-            total_assets_raw = cash_raw + stock_raw + crypto_raw + other_raw
+            # --- QUY ĐỔI CRYPTO SANG VNĐ ---
+            crypto_vnd_raw = crypto_usd_raw * EXCHANGE_RATE_USD
             
-            # 2. Tổng nạp / Tổng rút thực tế (VNĐ thô)
+            # Tổng tài sản bây giờ tất cả đều là VNĐ
+            total_assets_raw = cash_raw + stock_raw + crypto_vnd_raw + other_raw
+            
+            # 2. Tổng nạp / Tổng rút thực tế (Dòng tiền mặt VNĐ)
             cursor.execute("SELECT SUM(total_value) FROM transactions WHERE user_id = ? AND asset_type = 'CASH' AND total_value > 0", (user_id,))
             total_in_raw = cursor.fetchone()[0] or 0
             
@@ -55,7 +62,8 @@ class Module(BaseModule):
                 "display_profit": self.format_currency(profit_loss_raw),
                 "profit_percent": f"{profit_percent:,.1f}%",
                 "stock_val": self.format_currency(stock_raw),
-                "crypto_val": self.format_currency(crypto_raw),
+                # Hiển thị Crypto quy đổi sang VNĐ ở Dashboard tổng cho khớp phép tính
+                "crypto_val": self.format_currency(crypto_vnd_raw), 
                 "other_val": self.format_currency(other_raw),
                 "cash_val": self.format_currency(cash_raw),
                 "total_in": self.format_currency(total_in_raw),
