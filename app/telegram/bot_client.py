@@ -22,14 +22,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH (LUÔN PHẢI KIỂM TRA ĐẦU TIÊN) ---
+    # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH ---
     if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # --- ƯU TIÊN 2: LỆNH NHẬP TAY ĐẶC BIỆT CỦA STOCK ---
+    # --- ƯU TIÊN 2: HỎI CÁC MODULE QUA CAN_HANDLE (SỬA LỖI TẠI ĐÂY) ---
+    # Quét qua các module để xem có module nào tự nhận lệnh này không (Ví dụ: Stock nhận nút "Cập nhật giá")
+    for m_id, m_instance in modules.items():
+        if hasattr(m_instance, 'can_handle') and m_instance.can_handle(text):
+            result = m_instance.run(user_id, text)
+            await format_response(update, m_id, result)
+            return
+        # Nếu text khớp với tên module trong menu (📊 Cổ phiếu)
+        elif m_instance.get_info()['name'] == text:
+            result = m_instance.run(user_id)
+            await format_response(update, m_id, result)
+            return
+
+    # --- ƯU TIÊN 3: LỆNH NHẬP TAY STARTWITH (DÙNG ĐỂ REFRESH LAYOUT) ---
     if text.lower().startswith(("xoa ", "gia ")):
         if 'stock' in modules:
             res_stock = modules['stock'].run(user_id, text)
@@ -39,25 +52,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await format_response(update, 'stock', refresh_pf)
                 return
 
-    # --- ƯU TIÊN 3: CÁC NÚT BẤM MENU CHÍNH ---
-    for m_id, m_instance in modules.items():
-        if m_instance.get_info()['name'] == text:
-            result = m_instance.run(user_id)
-            await format_response(update, m_id, result)
-            return
-
     # --- ƯU TIÊN 4: XỬ LÝ GIAO DỊCH (WIZARD & PARSER) ---
     if 'transaction' in modules:
         res = modules['transaction'].run(user_id, text)
         
-        # Nếu Transaction trả về tín hiệu thoát
         if res == "EXIT_SIGNAL":
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
         if isinstance(res, str):
-            # Nếu thành công, hiện lại Dashboard
             if any(x in res for x in ["Trang chủ", "thành công", "hủy"]):
                 result = modules['dashboard'].run(user_id)
                 await update.message.reply_text(res)
