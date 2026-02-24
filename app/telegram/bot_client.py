@@ -3,8 +3,10 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from backend.module_loader import load_all_modules
 
+# 1. NẠP TẤT CẢ MODULE (DYNAMICS)
 modules = load_all_modules()
 
+# 2. MENU CHÍNH CỐ ĐỊNH
 MAIN_MENU = [
     ["💼 Tài sản của bạn"],
     ["📊 Cổ phiếu", "🪙 Crypto"],
@@ -15,67 +17,60 @@ MAIN_MENU = [
 ]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Khởi tạo bot"""
     reply_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
-    await update.message.reply_text("💼 *QUẢN LÝ TÀI SẢN VÀ ĐẦU TƯ*", reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(
+        "💼 *HỆ THỐNG QUẢN LÝ TÀI CHÍNH*\nSẵn sàng hỗ trợ bạn.",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cơ chế Plug & Play: Điều hướng tin nhắn cho Module tự xử lý"""
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # --- ƯU TIÊN 1: DASHBOARD ---
-    if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
-        if 'dashboard' in modules:
-            result = modules['dashboard'].run(user_id)
-            await format_response(update, 'dashboard', result)
-            return
+    # --- TÌM MODULE CÓ THỂ XỬ LÝ TIN NHẮN NÀY ---
+    target_module_id = None
+    result = None
 
-    # --- ƯU TIÊN 2: STOCK (Các lệnh con: Cập nhật giá, Xóa mã, Báo cáo) ---
-    stock_btns = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
-    if text in stock_btns or text.lower().startswith(("xoa ", "gia ")):
-        if 'stock' in modules:
-            res_stock = modules['stock'].run(user_id, text)
-            if isinstance(res_stock, str):
-                await update.message.reply_text(res_stock, parse_mode="Markdown")
-                refresh = modules['stock'].run(user_id)
-                await format_response(update, 'stock', refresh)
-            else:
-                await format_response(update, 'stock', res_stock)
-            return
+    # Ưu tiên các nút điều hướng quay về Dashboard trước
+    if text in ["🏠 Trang chủ", "🏠 Home", "💼 Tài sản của bạn", "❌ Hủy"]:
+        target_module_id = 'dashboard'
+        result = modules['dashboard'].run(user_id)
+    else:
+        # Quét qua các module xem ai nhận lệnh này
+        for m_id, m_instance in modules.items():
+            # Module sẽ tự quyết định xem nó có handle được text này không (can_handle là hàm mới)
+            if hasattr(m_instance, 'can_handle') and m_instance.can_handle(text):
+                target_module_id = m_id
+                result = m_instance.run(user_id, text)
+                break
+            # Trường hợp fallback cho các nút bấm Menu chính khớp tên Module
+            elif m_instance.get_info()['name'] == text:
+                target_module_id = m_id
+                result = m_instance.run(user_id)
+                break
 
-    # --- ƯU TIÊN 3: MENU CHÍNH ---
-    for m_id, m_instance in modules.items():
-        if m_instance.get_info()['name'] == text:
-            result = m_instance.run(user_id)
-            await format_response(update, m_id, result)
-            return
-
-    # --- ƯU TIÊN 4: TRANSACTION ---
-    if 'transaction' in modules:
-        res = modules['transaction'].run(user_id, text)
-        if res == "EXIT_SIGNAL":
-            result = modules['dashboard'].run(user_id)
-            await format_response(update, 'dashboard', result)
-            return
-        if isinstance(res, str):
-            if any(x in res for x in ["thành công", "Trang chủ", "hủy"]):
-                result = modules['dashboard'].run(user_id)
-                await update.message.reply_text(res)
-                await format_response(update, 'dashboard', result)
-            else:
-                await update.message.reply_text(res)
-            return
-        elif isinstance(res, dict) and res.get("status") == "wizard":
-            await format_response(update, 'transaction', res)
-            return
-
-    await update.message.reply_text("❓ Tôi chưa hiểu lệnh này.")
+    # --- HIỂN THỊ KẾT QUẢ ---
+    if target_module_id and result:
+        await format_response(update, target_module_id, result)
+    else:
+        # Nếu không ai nhận, thử đẩy vào Transaction (Parser nhanh)
+        if 'transaction' in modules:
+            res = modules['transaction'].run(user_id, text)
+            if res:
+                await format_response(update, 'transaction', res)
+                return
+        
+        await update.message.reply_text("❓ Lệnh không hợp lệ. Vui lòng chọn Menu.")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    """Hàm định dạng: GIỮ NGUYÊN VĂN BẢN TỪ MODULE"""
+    """Giao diện hiển thị: Tuyệt đối tôn trọng Layout của Module"""
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
 
-    # 1. Định dạng Dashboard (Khôi phục đủ 14 dòng thông tin)
-    if m_id == "dashboard":
+    # 1. Nếu là Dashboard: Dùng layout đặc thù của Dashboard
+    if m_id == "dashboard" and isinstance(result, dict):
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
             f"💰 Tổng: `{result.get('display_total', '0đ')}`\n"
@@ -83,28 +78,25 @@ async def format_response(update: Update, m_id: str, result: dict):
             f"📊 Stock: {result.get('stock_val', '0đ')}\n"
             f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
             f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
-            f"🎯 Mục tiêu: `{result.get('goal_display', '500 triệu')}`\n"
-            f"Tiến độ: `{result.get('goal_progress', 0):,.1f}%`\n"
-            f"Còn thiếu: `{result.get('remain_display', '0đ')}`\n\n"
-            f"⬆️ Tổng nạp: {result.get('total_in', '0đ')}\n"
-            f"⬇️ Tổng rút: {result.get('total_out', '0đ')}\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
             f"🏦 Tiền mặt: {result.get('cash_val', '0đ')}\n"
-            f"📊 Cổ phiếu: {result.get('stock_val', '0đ')}\n"
-            f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
-            f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
-            f"🏠 Bấm các nút dưới để quản lý chi tiết."
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🏠 Bấm các nút dưới để quản lý."
         )
         await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
-        
-    # 2. Định dạng Module Stock/Crypto/Transaction
-    # QUAN TRỌNG: Dùng kết quả message gốc để giữ layout xuống dòng và chi tiết mã
+
+    # 2. Nếu Module trả về Wizard (Nút bấm): Hiển thị nguyên văn Message
     elif isinstance(result, dict) and result.get("status") == "wizard":
         buttons = result["buttons"]
         keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        # TRẢ VỀ NGUYÊN VĂN: Không thêm thắt bất kỳ ký tự nào vào đây
         await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
-    
+
+    # 3. Trả về text đơn thuần (Thông báo thành công, lỗi...)
     else:
-        await update.message.reply_text(str(result), reply_markup=main_markup, parse_mode="Markdown")
+        # Nếu kết quả trả về là tín hiệu cần hiện lại Dashboard
+        if any(x in str(result) for x in ["thành công", "chiết khấu"]):
+            await update.message.reply_text(str(result), parse_mode="Markdown")
+            db_res = modules['dashboard'].run(update.effective_user.id)
+            await format_response(update, 'dashboard', db_res)
+        else:
+            await update.message.reply_text(str(result), reply_markup=main_markup, parse_mode="Markdown")
