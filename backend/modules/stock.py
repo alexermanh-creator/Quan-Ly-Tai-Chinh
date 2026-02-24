@@ -1,5 +1,6 @@
 from backend.interface import BaseModule
 from backend.core.portfolio import PortfolioManager
+from backend.database.db_manager import db
 
 class Module(BaseModule):
     def get_info(self):
@@ -20,29 +21,44 @@ class Module(BaseModule):
     def run(self, user_id, data=None):
         pm = PortfolioManager(user_id)
         
-        # --- XỬ LÝ CÁC LỆNH TỪ MENU CON ---
+        # --- 1. XỬ LÝ LỆNH TỪ MENU CON ---
+        
+        # Phản hồi khi nhấn nút Cập nhật giá
         if data == "🔄 Cập nhật giá":
-            # Tạm thời trả về thông báo, chúng ta sẽ viết logic này ở bước tiếp theo
             return {
                 "status": "wizard",
-                "message": "🔄 *TÍNH NĂNG ĐANG PHÁT TRIỂN*\n\nBạn sẽ sớm có thể cập nhật giá thị trường trực tiếp tại đây.",
+                "message": "🔄 *CẬP NHẬT GIÁ THỊ TRƯỜNG*\n\nHệ thống sẽ tự động cập nhật trong bản nâng cấp tới. Hiện tại bạn có thể cập nhật thủ công bằng cách nhập giao dịch Mua/Bán với giá mới nhất.",
                 "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "⬅️ Back"]
             }
             
+        # Phản hồi khi nhấn nút Xóa mã
         if data == "❌ Xóa mã":
             return {
                 "status": "wizard",
-                "message": "❌ *XÓA MÃ*\n\nBạn muốn xóa lịch sử giao dịch của mã nào? (Vui lòng nhập mã, VD: HPG)",
+                "message": "❌ *XÓA DỮ LIỆU MÃ*\n\nĐể xóa toàn bộ lịch sử giao dịch của một mã (để làm sạch danh mục), hãy nhập lệnh:\n`xoa [Mã]`\n\n*Ví dụ:* `xoa HPG`",
                 "buttons": ["⬅️ Back"]
             }
 
-        # --- HIỂN THỊ DANH MỤC (DEFAULT FLOW) ---
+        # Xử lý logic xóa mã khi người dùng nhập "xoa HPG"
+        if isinstance(data, str) and data.lower().startswith("xoa "):
+            ticker_to_del = data.split(" ")[1].upper()
+            try:
+                with db.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM transactions WHERE user_id = ? AND ticker = ? AND asset_type = 'STOCK'", 
+                                 (user_id, ticker_to_del))
+                    conn.commit()
+                return f"✅ Đã xóa toàn bộ lịch sử giao dịch mã *{ticker_to_del}*. Bấm [📊 Cổ phiếu] để cập nhật lại danh mục."
+            except Exception as e:
+                return f"⚠️ Lỗi khi xóa: {str(e)}"
+
+        # --- 2. HIỂN THỊ DANH MỤC (DEFAULT FLOW) ---
         pf_data = pm.get_stock_portfolio()
         summary = pf_data['summary']
         positions = pf_data['positions']
         
         if not positions:
-            msg = "📊 *DANH MỤC CỔ PHIẾU*\n\nBạn chưa có cổ phiếu nào trong danh mục. Hãy thực hiện giao dịch mua đầu tiên!"
+            msg = "📊 *DANH MỤC CỔ PHIẾU*\n\nBạn chưa có cổ phiếu nào trong danh mục. Hãy thực hiện giao dịch mua đầu tiên bằng nút bấm bên dưới!"
         else:
             # 1. Header Summary
             res = (
@@ -56,11 +72,11 @@ class Module(BaseModule):
 
             # 2. Key Metrics
             if summary['best']:
-                res += f"🏆 Mã tốt nhất:\n{summary['best']['ticker']} ({summary['best']['roi']:+.1f}%)\n"
-                res += f"📉 Mã kém nhất:\n{summary['worst']['ticker']} ({summary['worst']['roi']:+.1f}%)\n"
+                res += f"🏆 Mã tốt nhất: {summary['best']['ticker']} ({summary['best']['roi']:+.1f}%)\n"
+                res += f"📉 Mã kém nhất: {summary['worst']['ticker']} ({summary['worst']['roi']:+.1f}%)\n"
                 
                 weight = (summary['largest']['market_value'] / summary['total_value'] * 100) if summary['total_value'] > 0 else 0
-                res += f"📊 Tỉ trọng lớn nhất:\n{summary['largest']['ticker']} ({weight:.0f}%)\n"
+                res += f"📊 Tỉ trọng lớn nhất: {summary['largest']['ticker']} ({weight:.0f}%)\n"
                 res += "────────────\n"
 
             # 3. Danh sách chi tiết từng mã (Layout Dọc)
@@ -76,9 +92,8 @@ class Module(BaseModule):
                 )
             msg = res
 
-        # Trả về kết quả dưới dạng Wizard để hiện Menu con
+        # Trả về kết quả dưới dạng Wizard để hiện Menu con chuyên biệt
         return {
             "status": "wizard",
             "message": msg,
-            "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "⬅️ Back"]
-        }
+            "buttons
