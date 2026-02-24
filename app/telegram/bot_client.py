@@ -23,23 +23,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH ---
+    # Dashboard luôn lấy dữ liệu đầy đủ, không bỏ sót bất kỳ key nào
     if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # --- ƯU TIÊN 2: BẮT CÁC LỆNH WIZARD CỦA STOCK (SỬA LỖI TẠI ĐÂY) ---
-    # Nếu tin nhắn là nút bấm của Stock hoặc lệnh gia/xoa, phải ưu tiên cho Stock xử lý trước
-    stock_keywords = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
-    if text in stock_keywords or text.lower().startswith(("xoa ", "gia ")):
+    # --- ƯU TIÊN 2: XỬ LÝ NÚT BẤM VÀ LỆNH CỦA STOCK ---
+    # Đảm bảo các nút "Cập nhật giá", "Xóa mã" được gửi vào Stock trước khi trôi xuống Transaction
+    stock_btns = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
+    if text in stock_btns or text.lower().startswith(("xoa ", "gia ")):
         if 'stock' in modules:
             res_stock = modules['stock'].run(user_id, text)
             if isinstance(res_stock, str):
                 await update.message.reply_text(res_stock)
-                # Sau khi thực hiện lệnh, tự động làm mới danh mục
-                refresh_pf = modules['stock'].run(user_id)
-                await format_response(update, 'stock', refresh_pf)
+                # Refresh lại danh mục sau khi thực hiện lệnh
+                refresh = modules['stock'].run(user_id)
+                await format_response(update, 'stock', refresh)
             else:
                 await format_response(update, 'stock', res_stock)
             return
@@ -58,9 +59,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
-
         if isinstance(res, str):
-            if any(x in res for x in ["Trang chủ", "thành công", "hủy"]):
+            if any(x in res for x in ["thành công", "Trang chủ", "hủy", "ví tiền mặt"]):
                 result = modules['dashboard'].run(user_id)
                 await update.message.reply_text(res)
                 await format_response(update, 'dashboard', result)
@@ -74,7 +74,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Hãy chọn Menu hoặc nhập lệnh nhanh.")
 
 async def format_response(update: Update, m_id: str, result: dict):
+    """GIAO DIỆN HIỂN THỊ CHI TIẾT - GIỮ NGUYÊN TẤT CẢ KEY DỮ LIỆU"""
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
+
     if m_id == "dashboard":
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
@@ -83,9 +85,20 @@ async def format_response(update: Update, m_id: str, result: dict):
             f"📊 Stock: {result.get('stock_val', '0đ')}\n"
             f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
             f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
+            f"🎯 Mục tiêu: `{result.get('goal_display', '500 triệu')}`\n"
+            f"Tiến độ: `{result.get('goal_progress', 0):,.1f}%`\n"
+            f"Còn thiếu: `{result.get('remain_display', '0đ')}`\n\n"
+            f"⬆️ Tổng nạp: {result.get('total_in', '0đ')}\n"
+            f"⬇️ Tổng rút: {result.get('total_out', '0đ')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🏦 Tiền mặt: {result.get('cash_val', '0đ')}\n"
+            f"📊 Cổ phiếu: {result.get('stock_val', '0đ')}\n"
+            f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
+            f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
             f"🏠 Bấm các nút dưới để quản lý chi tiết."
         )
         await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
+        
     elif isinstance(result, dict) and result.get("status") == "wizard":
         buttons = result["buttons"]
         keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
