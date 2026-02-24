@@ -6,6 +6,12 @@ class Module(BaseModule):
     def get_info(self):
         return {"id": "stock", "name": "📊 Cổ phiếu"}
 
+    # Thêm hàm này để bot_client biết khi nào cần gửi tin nhắn vào đây
+    def can_handle(self, text):
+        """Tự nhận diện lệnh để các nút bấm hoạt động"""
+        btns = ["📊 Cổ phiếu", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
+        return text in btns or text.lower().startswith(("gia ", "xoa "))
+
     def format_money(self, val):
         abs_val = abs(val)
         suffix = "triệu"
@@ -55,8 +61,8 @@ class Module(BaseModule):
 
         # Xử lý logic xóa mã
         if isinstance(data, str) and data.lower().startswith("xoa "):
-            ticker_to_del = data.split(" ")[1].upper()
             try:
+                ticker_to_del = data.split(" ")[1].upper()
                 with db.get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("DELETE FROM transactions WHERE user_id = ? AND ticker = ? AND asset_type = 'STOCK'", (user_id, ticker_to_del))
@@ -128,5 +134,5 @@ class Module(BaseModule):
         return {
             "status": "wizard",
             "message": msg,
-            "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "⬅️ Back"]
+            "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
         }
