@@ -9,7 +9,20 @@ class PortfolioManager:
     def get_stock_portfolio(self):
         with db.get_connection() as conn:
             cursor = conn.cursor()
-            # Lấy toàn bộ lịch sử giao dịch STOCK, sắp xếp theo thời gian
+            
+            # 1. Khởi tạo bảng lưu giá thị trường nếu chưa có
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS stock_prices (
+                    ticker TEXT PRIMARY KEY,
+                    current_price REAL
+                )
+            ''')
+            
+            # 2. Lấy từ bảng giá thị trường (những giá do người dùng cập nhật thủ công)
+            cursor.execute("SELECT ticker, current_price FROM stock_prices")
+            market_prices = dict(cursor.fetchall())
+
+            # 3. Lấy toàn bộ lịch sử giao dịch STOCK của User
             cursor.execute('''
                 SELECT ticker, amount, price, total_value 
                 FROM transactions 
@@ -19,14 +32,14 @@ class PortfolioManager:
             records = cursor.fetchall()
 
         portfolio = {}
-        total_buy_val = 0  # Tổng tiền đã bỏ ra mua (Tổng nạp nhóm)
-        total_sell_val = 0 # Tổng tiền đã thu về khi bán (Tổng rút nhóm)
+        total_buy_val = 0  # Tổng nạp nhóm
+        total_sell_val = 0 # Tổng rút nhóm
 
         for ticker, amount, price, total_val in records:
             if ticker not in portfolio:
                 portfolio[ticker] = {'qty': 0, 'cost': 0, 'last_price': 0}
             
-            # Cập nhật giá gần nhất (giả lập giá hiện tại)
+            # Lưu giá giao dịch cuối cùng làm phương án dự phòng (fallback)
             portfolio[ticker]['last_price'] = abs(price)
             
             if amount > 0: # LỆNH MUA
@@ -35,31 +48,31 @@ class PortfolioManager:
                 total_buy_val += abs(total_val)
             
             elif amount < 0: # LỆNH BÁN
-                # Trước khi trừ, tính giá vốn TB của 1 cổ phiếu
                 if portfolio[ticker]['qty'] > 0:
+                    # Tính giá vốn TB để trừ vốn theo tỷ lệ
                     avg_cost_per_unit = portfolio[ticker]['cost'] / portfolio[ticker]['qty']
-                    # Trừ bớt giá vốn tương ứng với số lượng bán ra
                     portfolio[ticker]['cost'] -= abs(amount) * avg_cost_per_unit
-                    portfolio[ticker]['qty'] += amount # amount âm nên sẽ giảm qty
+                    portfolio[ticker]['qty'] += amount 
                 
                 total_sell_val += abs(total_val)
 
         positions = []
         for ticker, data in portfolio.items():
-            # Chỉ hiển thị những mã còn số dư trong kho
             if data['qty'] > 0.001: 
-                market_value = data['qty'] * data['last_price']
+                # ƯU TIÊN: Lấy giá từ bảng stock_prices, nếu không có thì lấy giá giao dịch cuối
+                current_p = market_prices.get(ticker, data['last_price'])
+                
+                market_value = data['qty'] * current_p
                 cost_basis = data['cost']
-                profit = market_value - cost_basis
                 
                 positions.append({
                     'ticker': ticker,
                     'qty': data['qty'],
                     'avg_price': cost_basis / data['qty'],
-                    'current_price': data['last_price'],
+                    'current_price': current_p,
                     'cost': cost_basis,
                     'market_value': market_value,
-                    'profit': profit,
+                    'profit': market_value - cost_basis,
                     'roi': self.analytics.calculate_roi(cost_basis, market_value)
                 })
 
