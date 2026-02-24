@@ -22,22 +22,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH (LUÔN PHẢI KIỂM TRA ĐẦU TIÊN) ---
+    # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH ---
     if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # --- ƯU TIÊN 2: LỆNH NHẬP TAY ĐẶC BIỆT CỦA STOCK ---
-    if text.lower().startswith(("xoa ", "gia ")):
+    # --- ƯU TIÊN 2: BẮT CÁC LỆNH WIZARD CỦA STOCK (SỬA LỖI TẠI ĐÂY) ---
+    # Nếu tin nhắn là nút bấm của Stock hoặc lệnh gia/xoa, phải ưu tiên cho Stock xử lý trước
+    stock_keywords = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
+    if text in stock_keywords or text.lower().startswith(("xoa ", "gia ")):
         if 'stock' in modules:
             res_stock = modules['stock'].run(user_id, text)
             if isinstance(res_stock, str):
                 await update.message.reply_text(res_stock)
+                # Sau khi thực hiện lệnh, tự động làm mới danh mục
                 refresh_pf = modules['stock'].run(user_id)
                 await format_response(update, 'stock', refresh_pf)
-                return
+            else:
+                await format_response(update, 'stock', res_stock)
+            return
 
     # --- ƯU TIÊN 3: CÁC NÚT BẤM MENU CHÍNH ---
     for m_id, m_instance in modules.items():
@@ -46,18 +51,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await format_response(update, m_id, result)
             return
 
-    # --- ƯU TIÊN 4: XỬ LÝ GIAO DỊCH (WIZARD & PARSER) ---
+    # --- ƯU TIÊN 4: XỬ LÝ GIAO DỊCH (TRANSACTION) ---
     if 'transaction' in modules:
         res = modules['transaction'].run(user_id, text)
-        
-        # Nếu Transaction trả về tín hiệu thoát
         if res == "EXIT_SIGNAL":
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
         if isinstance(res, str):
-            # Nếu thành công, hiện lại Dashboard
             if any(x in res for x in ["Trang chủ", "thành công", "hủy"]):
                 result = modules['dashboard'].run(user_id)
                 await update.message.reply_text(res)
@@ -79,16 +81,6 @@ async def format_response(update: Update, m_id: str, result: dict):
             f"💰 Tổng: `{result.get('display_total', '0đ')}`\n"
             f"📈 Lãi: `{result.get('display_profit', '0đ')}` ({result.get('profit_percent', '0%')})\n\n"
             f"📊 Stock: {result.get('stock_val', '0đ')}\n"
-            f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
-            f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
-            f"🎯 Mục tiêu: `{result.get('goal_display', '500 triệu')}`\n"
-            f"Tiến độ: `{result.get('goal_progress', 0):,.1f}%`\n"
-            f"Còn thiếu: `{result.get('remain_display', '0đ')}`\n\n"
-            f"⬆️ Tổng nạp: {result.get('total_in', '0đ')}\n"
-            f"⬇️ Tổng rút: {result.get('total_out', '0đ')}\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🏦 Tiền mặt: {result.get('cash_val', '0đ')}\n"
-            f"📊 Cổ phiếu: {result.get('stock_val', '0đ')}\n"
             f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
             f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
             f"🏠 Bấm các nút dưới để quản lý chi tiết."
