@@ -7,13 +7,12 @@ class Module(BaseModule):
     def __init__(self):
         self.states = {} 
         self.CRYPTO_TICKERS = ["BTC", "ETH", "BNB", "SOL", "DOT", "ADA", "XRP", "USDT", "LINK", "DOGE"]
-        self.EXCHANGE_RATE_USD = 26300 # Đồng bộ với Dashboard
+        self.EXCHANGE_RATE_USD = 26300 
 
     def get_info(self):
         return {"id": "transaction", "name": "➕ Giao dịch"}
 
     def _get_cash_balance(self, user_id):
-        """Tính số dư tiền mặt hiện tại trong ví từ DB"""
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT SUM(total_value) FROM transactions WHERE user_id = ? AND asset_type = 'CASH'", (user_id,))
@@ -31,33 +30,29 @@ class Module(BaseModule):
 
         text = data.strip()
         
-        # --- BƯỚC 0: MÀNG LỌC ĐIỀU HƯỚNG (Né nút Menu chính) ---
-        nav_buttons = ["💼 Tài sản của bạn", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "📜 Lịch sử", "🎯 Mục tiêu", "🏠 Trang chủ", "🏠 Home", "⬅️ Back"]
-        if text in nav_buttons:
+        # --- BƯỚC 0: CHẶN CÁC NÚT MENU CHÍNH ---
+        MAIN_NAV_TEXTS = ["💼 Tài sản của bạn", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "📜 Lịch sử", "🎯 Mục tiêu", "📈 Báo cáo", "⚙️ Cài đặt", "🏠 Trang chủ"]
+        if text in MAIN_NAV_TEXTS:
             self.states[user_id] = {}
-            return "🏠 Quay lại màn hình chính."
+            return "HOME_SIGNAL" # Trả về tín hiệu để Bot Client biết cần hiện Dashboard
 
-        # Chuẩn hóa dấu phẩy thành dấu chấm
         text_clean = text.replace(",", ".")
         
-        # --- BƯỚC 1: ƯU TIÊN KIỂM TRA LỆNH NHANH (PARSER) ---
         quick_res = self._parse_quick_command(user_id, text_clean)
         if quick_res:
             self.states[user_id] = {} 
             return quick_res
 
-        # --- BƯỚC 2: KIỂM TRA NÚT BẤM TRONG WIZARD ---
         menu_internal = ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "❌ Hủy", "Mua", "Bán", "Nạp", "Rút"]
-        if text in menu_internal:
+        if text in menu_buttons: # Lỗi typo trong code cũ của bạn (menu_buttons -> menu_internal)
             if text in ["❌ Hủy"]:
                 self.states[user_id] = {}
-                return "🏠 Quay lại màn hình chính."
+                return "HOME_SIGNAL"
             
             if text in ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác"]:
                 self.states[user_id] = {"flow": text, "step": "ask_ticker" if text != "💵 Tiền mặt" else "ask_side"}
                 return self._get_wizard_question(text, self.states[user_id])
         
-        # --- BƯỚC 3: XỬ LÝ THEO LUỒNG WIZARD ---
         state = self.states.get(user_id, {})
         flow = state.get("flow")
         if flow in ["📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác"]:
@@ -137,26 +132,19 @@ class Module(BaseModule):
     def _save_to_db(self, user_id, a_type, ticker, amount, price):
         total_val = amount * price
         cost_vnd = total_val * (self.EXCHANGE_RATE_USD if a_type == "CRYPTO" else 1)
-
-        # Kiểm tra ví trước khi mua tài sản (amount > 0)
         if a_type != "CASH" and amount > 0:
             if self._get_cash_balance(user_id) < cost_vnd: return "❌ Ôi Bạn Hết Tiền Rồi!!"
-
         with db.get_connection() as conn:
             cursor = conn.cursor()
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # 1. Ghi nhận tài sản
             cursor.execute("INSERT INTO transactions (user_id, asset_type, ticker, amount, price, total_value, date) VALUES (?,?,?,?,?,?,?)",
                            (user_id, a_type, ticker, amount, price, total_val, now))
-            # 2. Ghi sổ kép vào ví Tiền mặt (Mua thì trừ, Bán thì cộng)
             if a_type != "CASH":
                 cash_impact = -cost_vnd
                 cursor.execute("INSERT INTO transactions (user_id, asset_type, ticker, amount, price, total_value, date) VALUES (?, 'CASH', ?, 1, ?, ?, ?)",
                                (user_id, f"Mua/Bán {ticker}", cash_impact, cash_impact, now))
             conn.commit()
-        
-        unit = "$" if a_type == "CRYPTO" else "đ"
-        return f"✅ Ghi nhận thành công. Đã cập nhật ví tiền mặt. Trang chủ đang cập nhật..."
+        return f"✅ Ghi nhận thành công. Trang chủ đang cập nhật..."
 
     def _parse_value(self, text):
         clean = text.lower().replace(" ", "").replace(",", ".")
