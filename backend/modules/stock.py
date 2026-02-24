@@ -6,9 +6,8 @@ class Module(BaseModule):
     def get_info(self):
         return {"id": "stock", "name": "📊 Cổ phiếu"}
 
-    # Thêm hàm này để bot_client biết khi nào cần gửi tin nhắn vào đây
     def can_handle(self, text):
-        """Tự nhận diện lệnh để các nút bấm hoạt động"""
+        """Hàm quan trọng: Giúp bot_client chuyển hướng tin nhắn vào đây"""
         btns = ["📊 Cổ phiếu", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
         return text in btns or text.lower().startswith(("gia ", "xoa "))
 
@@ -20,7 +19,6 @@ class Module(BaseModule):
             suffix = "tỷ"
         else:
             display_val = val / 10**6
-            
         sign = "+" if val > 0 else ("-" if val < 0 else "")
         return f"{sign}{abs(display_val):,.1f} {suffix}"
 
@@ -28,38 +26,33 @@ class Module(BaseModule):
         pm = PortfolioManager(user_id)
         
         # --- 1. XỬ LÝ LỆNH TỪ MENU CON ---
-        
-        # Phản hồi khi nhấn nút Cập nhật giá
         if data == "🔄 Cập nhật giá":
             return {
                 "status": "wizard",
                 "message": "🔄 *CẬP NHẬT GIÁ THỊ TRƯỜNG*\n\nHãy nhập theo cú pháp: `gia [Mã] [Giá]`\n(Đơn vị là nghìn đồng)\n\n*Ví dụ:* `gia VPB 22.5` (tương ứng 22,500đ)",
-                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "⬅️ Back"]
+                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
             }
 
-        # Xử lý lệnh cập nhật giá thủ công
         if isinstance(data, str) and data.lower().startswith("gia "):
             try:
                 parts = data.split(" ")
                 ticker = parts[1].upper()
-                price = float(parts[2]) * 1000 # Quy đổi 22.5 -> 22500
+                price = float(parts[2]) * 1000
                 with db.get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("INSERT OR REPLACE INTO stock_prices (ticker, current_price) VALUES (?, ?)", (ticker, price))
                     conn.commit()
                 return f"✅ Đã cập nhật giá thị trường mã *{ticker}* là `{price/1000:,.1f}k`. Bấm [📊 Cổ phiếu] để xem thay đổi."
             except: 
-                return "⚠️ Cú pháp sai. Hãy nhập: `gia [Mã] [Giá]` (VD: `gia HPG 28.5`)"
+                return "⚠️ Cú pháp sai. Hãy nhập: `gia [Mã] [Giá]`"
             
-        # Phản hồi khi nhấn nút Xóa mã
         if data == "❌ Xóa mã":
             return {
                 "status": "wizard",
                 "message": "❌ *XÓA DỮ LIỆU MÃ*\n\nĐể xóa toàn bộ lịch sử giao dịch của một mã, hãy nhập lệnh:\n`xoa [Mã]`\n\n*Ví dụ:* `xoa HPG`",
-                "buttons": ["⬅️ Back"]
+                "buttons": ["📊 Cổ phiếu", "🏠 Trang chủ"]
             }
 
-        # Xử lý logic xóa mã
         if isinstance(data, str) and data.lower().startswith("xoa "):
             try:
                 ticker_to_del = data.split(" ")[1].upper()
@@ -67,11 +60,10 @@ class Module(BaseModule):
                     cursor = conn.cursor()
                     cursor.execute("DELETE FROM transactions WHERE user_id = ? AND ticker = ? AND asset_type = 'STOCK'", (user_id, ticker_to_del))
                     conn.commit()
-                return f"✅ Đã xóa toàn bộ lịch sử giao dịch mã *{ticker_to_del}*. Bấm [📊 Cổ phiếu] để cập nhật lại danh mục."
+                return f"✅ Đã xóa toàn bộ lịch sử giao dịch mã *{ticker_to_del}*."
             except Exception as e:
                 return f"⚠️ Lỗi khi xóa: {str(e)}"
 
-        # Phản hồi khi nhấn nút Báo cáo nhóm
         if data == "📈 Báo cáo nhóm":
             pf_data = pm.get_stock_portfolio()
             summary = pf_data['summary']
@@ -91,16 +83,16 @@ class Module(BaseModule):
             return {
                 "status": "wizard",
                 "message": report,
-                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "⬅️ Back"]
+                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
             }
 
-        # --- 2. HIỂN THỊ DANH MỤC (DEFAULT FLOW) ---
+        # --- 2. HIỂN THỊ DANH MỤC (LAYOUT GỐC CỦA BẠN) ---
         pf_data = pm.get_stock_portfolio()
         summary = pf_data['summary']
         positions = pf_data['positions']
         
         if not positions:
-            msg = "📊 *DANH MỤC CỔ PHIẾU*\n\nBạn chưa có cổ phiếu nào trong danh mục. Hãy thực hiện giao dịch mua đầu tiên bằng nút bấm bên dưới!"
+            msg = "📊 *DANH MỤC CỔ PHIẾU*\n\nBạn chưa có cổ phiếu nào trong danh mục."
         else:
             res = (
                 f"📊 *DANH MỤC CỔ PHIẾU*\n\n"
@@ -111,10 +103,9 @@ class Module(BaseModule):
                 f"⬇️ Tổng rút: {self.format_money(pf_data['total_out'])}\n\n"
             )
 
-            if summary['best']:
+            if summary.get('best'):
                 res += f"🏆 Mã tốt nhất: {summary['best']['ticker']} ({summary['best']['roi']:+.1f}%)\n"
                 res += f"📉 Mã kém nhất: {summary['worst']['ticker']} ({summary['worst']['roi']:+.1f}%)\n"
-                
                 weight = (summary['largest']['market_value'] / summary['total_value'] * 100) if summary['total_value'] > 0 else 0
                 res += f"📊 Tỉ trọng lớn nhất: {summary['largest']['ticker']} ({weight:.0f}%)\n"
                 res += "────────────\n"
