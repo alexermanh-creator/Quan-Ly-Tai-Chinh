@@ -22,61 +22,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH ---
-    if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
+    # --- 1. ĐIỀU HƯỚNG CHÍNH ---
+    if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn"]:
         if 'dashboard' in modules:
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
             return
 
-    # --- ƯU TIÊN 2: HỎI CÁC MODULE QUA CAN_HANDLE (SỬA LỖI TẠI ĐÂY) ---
-    # Quét qua các module để xem có module nào tự nhận lệnh này không (Ví dụ: Stock nhận nút "Cập nhật giá")
+    # --- 2. CƠ CHẾ PLUG & PLAY (QUAN TRỌNG NHẤT) ---
+    # Bot không cần biết 'text' là gì, nó chỉ hỏi các module xem ai nhận lệnh này
     for m_id, m_instance in modules.items():
-        if hasattr(m_instance, 'can_handle') and m_instance.can_handle(text):
-            result = m_instance.run(user_id, text)
-            await format_response(update, m_id, result)
-            return
-        # Nếu text khớp với tên module trong menu (📊 Cổ phiếu)
-        elif m_instance.get_info()['name'] == text:
-            result = m_instance.run(user_id)
-            await format_response(update, m_id, result)
+        # Nếu module tự nhận lệnh (qua can_handle) hoặc khớp tên Menu
+        if m_instance.can_handle(text) or m_instance.get_info()['name'] == text:
+            result = m_instance.run(user_id, text if m_instance.can_handle(text) else None)
+            
+            # Xử lý nếu module trả về text thông báo thành công (như sau khi gia/xoa)
+            if isinstance(result, str):
+                await update.message.reply_text(result, parse_mode="Markdown")
+                # Sau khi xong việc, tự động reload lại chính module đó để hiện layout chi tiết
+                refresh = m_instance.run(user_id)
+                await format_response(update, m_id, refresh)
+            else:
+                await format_response(update, m_id, result)
             return
 
-    # --- ƯU TIÊN 3: LỆNH NHẬP TAY STARTWITH (DÙNG ĐỂ REFRESH LAYOUT) ---
-    if text.lower().startswith(("xoa ", "gia ")):
-        if 'stock' in modules:
-            res_stock = modules['stock'].run(user_id, text)
-            if isinstance(res_stock, str):
-                await update.message.reply_text(res_stock)
-                refresh_pf = modules['stock'].run(user_id)
-                await format_response(update, 'stock', refresh_pf)
-                return
-
-    # --- ƯU TIÊN 4: XỬ LÝ GIAO DỊCH (WIZARD & PARSER) ---
+    # --- 3. XỬ LÝ GIAO DỊCH (TRANSACTION PARSER) ---
     if 'transaction' in modules:
         res = modules['transaction'].run(user_id, text)
-        
         if res == "EXIT_SIGNAL":
             result = modules['dashboard'].run(user_id)
             await format_response(update, 'dashboard', result)
-            return
-
-        if isinstance(res, str):
-            if any(x in res for x in ["Trang chủ", "thành công", "hủy"]):
-                result = modules['dashboard'].run(user_id)
-                await update.message.reply_text(res)
-                await format_response(update, 'dashboard', result)
-            else:
-                await update.message.reply_text(res)
-            return
+        elif isinstance(res, str):
+            await update.message.reply_text(res)
+            if any(x in res for x in ["thành công", "Trang chủ"]):
+                await format_response(update, 'dashboard', modules['dashboard'].run(user_id))
         elif isinstance(res, dict) and res.get("status") == "wizard":
             await format_response(update, 'transaction', res)
-            return
+        return
 
-    await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Hãy chọn Menu hoặc nhập lệnh nhanh.")
+    await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Hãy chọn Menu.")
 
 async def format_response(update: Update, m_id: str, result: dict):
+    """Giao diện hiển thị: Tuyệt đối giữ nguyên Layout của từng Module"""
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
+    
     if m_id == "dashboard":
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
