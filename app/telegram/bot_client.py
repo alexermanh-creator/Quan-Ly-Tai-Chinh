@@ -3,8 +3,10 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from backend.module_loader import load_all_modules
 
+# 1. NẠP TẤT CẢ MODULE
 modules = load_all_modules()
 
+# 2. ĐỊNH NGHĨA MENU CHÍNH
 MAIN_MENU = [
     ["💼 Tài sản của bạn"],
     ["📊 Cổ phiếu", "🪙 Crypto"],
@@ -34,10 +36,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in stock_btns or text.lower().startswith(("xoa ", "gia ")):
         if 'stock' in modules:
             res_stock = modules['stock'].run(user_id, text)
-            # Nếu trả về chuỗi thông báo thành công
             if isinstance(res_stock, str):
                 await update.message.reply_text(res_stock, parse_mode="Markdown")
-                # Reload lại danh mục để hiện layout chi tiết
                 refresh = modules['stock'].run(user_id)
                 await format_response(update, 'stock', refresh)
             else:
@@ -73,10 +73,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Tôi chưa hiểu lệnh này.")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    """Hàm định dạng: Tuyệt đối không can thiệp vào text của module trả về"""
+    """Hàm định dạng: KHÔNG CAN THIỆP VÀO LAYOUT CỦA MODULE TRẢ VỀ"""
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
 
-    # 1. Dashboard giữ nguyên các key để không bị 0đ
+    # TRƯỜNG HỢP 1: HIỂN THỊ DASHBOARD (Cố định các Key hệ thống)
     if m_id == "dashboard":
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
@@ -99,14 +99,16 @@ async def format_response(update: Update, m_id: str, result: dict):
         )
         await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
         
-    # 2. Xử lý các Module trả về Wizard (Stock, Crypto, Transaction)
+    # TRƯỜNG HỢP 2: HIỂN THỊ CÁC MODULE CÓ WIZARD (STOCK, CRYPTO, TRANSACTION)
+    # Tuyệt đối giữ nguyên layout text từ result["message"]
     elif isinstance(result, dict) and result.get("status") == "wizard":
         buttons = result["buttons"]
         keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        # LẤY NGUYÊN VĂN result['message'] - Không chỉnh sửa layout
+        
+        # SỬA TẠI ĐÂY: Trả về nguyên văn message để giữ layout chi tiết của Stock
         await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
     
-    # 3. Các trường hợp khác
+    # TRƯỜNG HỢP 3: CÁC DỮ LIỆU TEXT KHÁC
     else:
         await update.message.reply_text(str(result), reply_markup=main_markup, parse_mode="Markdown")
