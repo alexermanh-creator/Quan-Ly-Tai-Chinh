@@ -1,17 +1,19 @@
 from abc import ABC, abstractmethod
 
 class BaseModule(ABC):
-    """
-    Đây là Interface chuẩn. 
-    Bất kỳ module nào 'cắm' vào hệ thống cũng phải có 2 hàm này.
-    """
-    
     @abstractmethod
     def get_info(self):
-        """Trả về tên và mô tả của module"""
+        """Trả về ID và Tên module"""
         pass
 
     @abstractmethod
     def run(self, user_id, data=None):
-        """Hàm thực thi chính của module"""
+        """Hàm thực thi chính"""
         pass
+
+    def can_handle(self, text):
+        """
+        Mặc định trả về False. 
+        Các module sẽ override hàm này để tự nhận lệnh (ví dụ: nút bấm hoặc lệnh gia/xoa).
+        """
+        return False
