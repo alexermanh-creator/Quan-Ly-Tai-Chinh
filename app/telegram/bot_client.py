@@ -3,10 +3,8 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from backend.module_loader import load_all_modules
 
-# 1. NẠP TẤT CẢ MODULE
 modules = load_all_modules()
 
-# 2. ĐỊNH NGHĨA MENU CHÍNH
 MAIN_MENU = [
     ["💼 Tài sản của bạn"],
     ["📊 Cổ phiếu", "🪙 Crypto"],
@@ -31,7 +29,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await format_response(update, 'dashboard', result)
             return
 
-    # --- ƯU TIÊN 2: STOCK (Cập nhật giá, Xóa mã, Báo cáo) ---
+    # --- ƯU TIÊN 2: STOCK (Các lệnh con: Cập nhật giá, Xóa mã, Báo cáo) ---
     stock_btns = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
     if text in stock_btns or text.lower().startswith(("xoa ", "gia ")):
         if 'stock' in modules:
@@ -73,10 +71,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Tôi chưa hiểu lệnh này.")
 
 async def format_response(update: Update, m_id: str, result: dict):
-    """Hàm định dạng: KHÔNG CAN THIỆP VÀO LAYOUT CỦA MODULE TRẢ VỀ"""
+    """Hàm định dạng: GIỮ NGUYÊN VĂN BẢN TỪ MODULE"""
     main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
 
-    # TRƯỜNG HỢP 1: HIỂN THỊ DASHBOARD (Cố định các Key hệ thống)
+    # 1. Định dạng Dashboard (Khôi phục đủ 14 dòng thông tin)
     if m_id == "dashboard":
         msg = (
             f"💼 *TÀI SẢN CỦA BẠN*\n"
@@ -99,16 +97,14 @@ async def format_response(update: Update, m_id: str, result: dict):
         )
         await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
         
-    # TRƯỜNG HỢP 2: HIỂN THỊ CÁC MODULE CÓ WIZARD (STOCK, CRYPTO, TRANSACTION)
-    # Tuyệt đối giữ nguyên layout text từ result["message"]
+    # 2. Định dạng Module Stock/Crypto/Transaction
+    # QUAN TRỌNG: Dùng kết quả message gốc để giữ layout xuống dòng và chi tiết mã
     elif isinstance(result, dict) and result.get("status") == "wizard":
         buttons = result["buttons"]
         keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        
-        # SỬA TẠI ĐÂY: Trả về nguyên văn message để giữ layout chi tiết của Stock
+        # TRẢ VỀ NGUYÊN VĂN: Không thêm thắt bất kỳ ký tự nào vào đây
         await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
     
-    # TRƯỜNG HỢP 3: CÁC DỮ LIỆU TEXT KHÁC
     else:
         await update.message.reply_text(str(result), reply_markup=main_markup, parse_mode="Markdown")
