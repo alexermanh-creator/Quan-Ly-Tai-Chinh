@@ -111,7 +111,18 @@ class Module(BaseModule):
         clean = text.lower().replace(" ", "")
         match = re.search(r"(\d+\.?\d*)", clean)
         if not match: return 0
+        
         num = float(match.group(1))
-        if "tr" in clean or "triệu" in clean: num *= 1000000
-        elif "k" in clean: num *= 1000
+        
+        # Kiểm tra đơn vị tỷ, triệu, k
+        if any(x in clean for x in ["ty", "tỷ"]):
+            num *= 1000000000 # Nhân 1 tỷ
+        elif any(x in clean for x in ["tr", "triệu"]):
+            num *= 1000000 # Nhân 1 triệu
+        elif "k" in clean:
+            num *= 1000
+        # Nếu gõ số không có đơn vị (VD: 100), mặc định là Triệu cho nhanh
+        elif num < 10000:
+            num *= 1000000
+            
         return num
