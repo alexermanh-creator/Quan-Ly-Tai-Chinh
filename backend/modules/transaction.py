@@ -7,13 +7,12 @@ class Module(BaseModule):
     def __init__(self):
         self.states = {} 
         self.CRYPTO_TICKERS = ["BTC", "ETH", "BNB", "SOL", "DOT", "ADA", "XRP", "USDT", "LINK", "DOGE"]
-        self.EXCHANGE_RATE_USD = 26300 
+        self.EXCHANGE_RATE_USD = 25450 # Cập nhật theo tỷ giá Portfolio
 
     def get_info(self):
         return {"id": "transaction", "name": "➕ Giao dịch"}
 
     def _get_cash_balance(self, user_id):
-        """Tính số dư tiền mặt hiện tại trong ví"""
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT SUM(total_value) FROM transactions WHERE user_id = ? AND asset_type = 'CASH'", (user_id,))
@@ -30,13 +29,10 @@ class Module(BaseModule):
             }
 
         text = data.strip()
-        
-        # --- BƯỚC 0: CHẶN CÁC LỆNH ĐIỀU HƯỚNG HỆ THỐNG ---
-        # Tránh việc Module Transaction "nuốt" mất các nút bấm Menu chính
         NAV_COMMANDS = ["🏠 Trang chủ", "💼 Tài sản của bạn", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "📜 Lịch sử", "🎯 Mục tiêu", "📈 Báo cáo", "⚙️ Cài đặt"]
         if text in NAV_COMMANDS:
             self.states[user_id] = {}
-            return "EXIT_SIGNAL" # Tín hiệu để bot_client quay về Dashboard
+            return "EXIT_SIGNAL"
 
         text_clean = text.replace(",", ".")
         
@@ -57,7 +53,7 @@ class Module(BaseModule):
                 self.states[user_id] = {"flow": text, "step": "ask_ticker" if text != "💵 Tiền mặt" else "ask_side"}
                 return self._get_wizard_question(text, self.states[user_id])
 
-        # --- BƯỚC 3: XỬ LÝ THEO LUỒNG WIZARD ---
+        # --- BƯỚC 3: XỬ LÝ WIZARD ---
         state = self.states.get(user_id, {})
         flow = state.get("flow")
         if flow in ["📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác"]:
@@ -65,33 +61,34 @@ class Module(BaseModule):
         if flow == "💵 Tiền mặt":
             return self._handle_cash_wizard(user_id, text_clean, state)
 
-        return "❓ Không rõ yêu cầu. Hãy chọn menu hoặc gõ lệnh nhanh (VD: nap 1ty, btc 0.1 70000)."
+        return "❓ Không rõ yêu cầu. Hãy chọn menu hoặc gõ lệnh nhanh (VD: nap 1ty, vcb 100 55)."
 
     def _get_wizard_question(self, flow, state):
         if flow == "💵 Tiền mặt":
-            return {"status": "wizard", "message": "📱 *CASH FLOW*\n➡️ Bạn muốn Nạp hay Rút tiền?", "buttons": ["Nạp", "Rút", "🏠 Trang chủ", "❌ Hủy"]}
-        return {"status": "wizard", "message": f"📱 *{flow}*\n➡️ Mã tài sản là gì?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
+            return {"status": "wizard", "message": "📱 *CASH FLOW*\n➡️ Bạn muốn Nạp hay Rút tiền?", "buttons": ["Nạp", "Rút", "❌ Hủy"]}
+        return {"status": "wizard", "message": f"📱 *{flow}*\n➡️ Mã tài sản là gì?", "buttons": ["❌ Hủy"]}
 
     def _parse_quick_command(self, user_id, text):
         t = text.lower().strip()
+        # Lệnh tiền mặt: nap 100tr, rut 10tr
         cash_match = re.search(r"(nạp|nap|rút|rut)\s*(\d+\.?\d*)\s*(tỷ|ty|tr|triệu|k)?", t)
         if cash_match:
-            cmd = cash_match.group(1)
+            side_text = cash_match.group(1)
             val = self._parse_value(t)
-            if val > 0:
-                if cmd in ["rút", "rut"]:
-                    if self._get_cash_balance(user_id) < val: return "❌ Ôi Bạn Hết Tiền Rồi!!"
-                    val = -abs(val)
-                return self._save_to_db(user_id, "CASH", "VND", 1, val)
+            t_type = "IN" if side_text in ["nạp", "nap"] else "OUT"
+            if t_type == "OUT" and self._get_cash_balance(user_id) < val: return "❌ Ôi Bạn Hết Tiền Rồi!!"
+            return self._save_to_db(user_id, "CASH", t_type, "VND", 1, val if t_type == "IN" else -val)
 
+        # Lệnh tài sản: vcb 100 55
         asset_match = re.match(r"^([a-z0-9]{2,10})\s+(-?\d+\.?\d*)\s+(\d+\.?\d*)$", t)
         if asset_match:
             ticker = asset_match.group(1).upper()
             amount = float(asset_match.group(2))
             price = float(asset_match.group(3))
             a_type = "CRYPTO" if ticker in self.CRYPTO_TICKERS or len(ticker) > 5 else "STOCK"
+            t_type = "BUY" if amount > 0 else "SELL"
             if a_type == "STOCK" and price < 1000: price *= 1000
-            return self._save_to_db(user_id, a_type, ticker, amount, price)
+            return self._save_to_db(user_id, a_type, t_type, ticker, abs(amount), price)
         return None
 
     def _handle_assets_wizard(self, user_id, text, state):
@@ -101,21 +98,21 @@ class Module(BaseModule):
 
         if step == "ask_ticker":
             state.update({"ticker": text.upper(), "step": "ask_side"})
-            return {"status": "wizard", "message": f"Mã: {text.upper()}\n➡️ Bạn muốn Mua hay Bán?", "buttons": ["Mua", "Bán", "🏠 Trang chủ", "❌ Hủy"]}
+            return {"status": "wizard", "message": f"Mã: {text.upper()}\n➡️ Bạn muốn Mua hay Bán?", "buttons": ["Mua", "Bán", "❌ Hủy"]}
         if step == "ask_side":
             if text not in ["Mua", "Bán"]: return "Vui lòng chọn Mua hoặc Bán."
-            state.update({"side": 1 if text == "Mua" else -1, "step": "ask_amount"})
-            return {"status": "wizard", "message": "➡️ Số lượng bao nhiêu?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
+            state.update({"side": "BUY" if text == "Mua" else "SELL", "step": "ask_amount"})
+            return {"status": "wizard", "message": "➡️ Số lượng bao nhiêu?", "buttons": ["❌ Hủy"]}
         if step == "ask_amount":
             try:
                 state.update({"amount": float(text.replace(",", ".")), "step": "ask_price"})
-                return {"status": "wizard", "message": "➡️ Giá giao dịch?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
+                return {"status": "wizard", "message": "➡️ Giá giao dịch?", "buttons": ["❌ Hủy"]}
             except: return "⚠️ Nhập số lượng bằng con số."
         if step == "ask_price":
             try:
                 price = float(text.replace(",", "."))
                 if a_type == "STOCK" and price < 1000: price *= 1000
-                res = self._save_to_db(user_id, a_type, state["ticker"], state["amount"] * state["side"], price)
+                res = self._save_to_db(user_id, a_type, state["side"], state["ticker"], state["amount"], price)
                 self.states[user_id] = {}
                 return res
             except: return "⚠️ Nhập giá bằng con số."
@@ -124,32 +121,48 @@ class Module(BaseModule):
         step = state.get("step")
         if step == "ask_side":
             if text not in ["Nạp", "Rút"]: return "Vui lòng chọn Nạp hoặc Rút."
-            state.update({"side": 1 if text == "Nạp" else -1, "step": "ask_value"})
-            return {"status": "wizard", "message": f"➡️ Số tiền {text} bao nhiêu?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
+            state.update({"side": "IN" if text == "Nạp" else "OUT", "step": "ask_value"})
+            return {"status": "wizard", "message": f"➡️ Số tiền {text} bao nhiêu?", "buttons": ["❌ Hủy"]}
         if step == "ask_value":
             val = self._parse_value(text)
             if val == 0: return "⚠️ Số tiền không hợp lệ."
-            if state["side"] == -1 and self._get_cash_balance(user_id) < val: return "❌ Ôi Bạn Hết Tiền Rồi!!"
-            res = self._save_to_db(user_id, "CASH", "VND", 1, val * state["side"])
+            if state["side"] == "OUT" and self._get_cash_balance(user_id) < val: return "❌ Ôi Bạn Hết Tiền Rồi!!"
+            res = self._save_to_db(user_id, "CASH", state["side"], "VND", 1, val if state["side"] == "IN" else -val)
             self.states[user_id] = {}
             return res
 
-    def _save_to_db(self, user_id, a_type, ticker, amount, price):
+    def _save_to_db(self, user_id, a_type, t_type, ticker, amount, price):
+        # total_val cho Crypto tính bằng USD, Stock tính bằng VND
         total_val = amount * price
-        cost_vnd = total_val * (self.EXCHANGE_RATE_USD if a_type == "CRYPTO" else 1)
-        if a_type != "CASH" and amount > 0:
+        # Quy đổi ra VND để trừ tiền mặt
+        cost_vnd = abs(total_val) * (self.EXCHANGE_RATE_USD if a_type == "CRYPTO" else 1)
+        
+        # Kiểm tra số dư nếu là lệnh Mua (BUY)
+        if a_type != "CASH" and t_type == "BUY":
             if self._get_cash_balance(user_id) < cost_vnd: return "❌ Ôi Bạn Hết Tiền Rồi!!"
+
         with db.get_connection() as conn:
             cursor = conn.cursor()
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cursor.execute("INSERT INTO transactions (user_id, asset_type, ticker, amount, price, total_value, date) VALUES (?,?,?,?,?,?,?)",
-                           (user_id, a_type, ticker, amount, price, total_val, now))
+            
+            # Ghi giao dịch chính (Có cột TYPE)
+            cursor.execute("""
+                INSERT INTO transactions (user_id, asset_type, type, ticker, amount, price, total_value, date) 
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (user_id, a_type, t_type, ticker, amount, price, total_val, now))
+            
+            # Tự động ghi đối ứng vào CASH nếu là STOCK/CRYPTO
             if a_type != "CASH":
-                cash_impact = -cost_vnd
-                cursor.execute("INSERT INTO transactions (user_id, asset_type, ticker, amount, price, total_value, date) VALUES (?, 'CASH', ?, 1, ?, ?, ?)",
-                               (user_id, f"Trừ tiền mua {ticker}", cash_impact, cash_impact, now))
+                cash_type = "OUT" if t_type == "BUY" else "IN"
+                cash_impact = -cost_vnd if t_type == "BUY" else cost_vnd
+                note = f"{'Mua' if t_type == 'BUY' else 'Bán'} {ticker}"
+                cursor.execute("""
+                    INSERT INTO transactions (user_id, asset_type, type, ticker, amount, price, total_value, date, note) 
+                    VALUES (?, 'CASH', ?, ?, 1, ?, ?, ?, ?)
+                """, (user_id, cash_type, f"Ví tiền mặt", cash_impact, cash_impact, now, note))
+            
             conn.commit()
-        return f"✅ Ghi nhận thành công. Đã cập nhật ví tiền mặt."
+        return f"✅ Ghi nhận thành công {t_type} {ticker}. Đã cập nhật ví tiền mặt."
 
     def _parse_value(self, text):
         clean = text.lower().replace(" ", "").replace(",", ".")
