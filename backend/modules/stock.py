@@ -1,97 +1,106 @@
-from backend.interface import BaseModule
-from backend.core.portfolio import PortfolioManager
-from backend.database.db_manager import db
+import os
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ContextTypes
+from backend.module_loader import load_all_modules
 
-class Module(BaseModule):
-    def get_info(self):
-        return {"id": "stock", "name": "📊 Cổ phiếu"}
+modules = load_all_modules()
 
-    def format_money(self, val):
-        abs_val = abs(val)
-        suffix = "triệu"
-        if abs_val >= 10**9:
-            display_val = val / 10**9
-            suffix = "tỷ"
-        else:
-            display_val = val / 10**6
-        sign = "+" if val > 0 else ("-" if val < 0 else "")
-        return f"{sign}{abs(display_val):,.1f} {suffix}"
+MAIN_MENU = [
+    ["💼 Tài sản của bạn"],
+    ["📊 Cổ phiếu", "🪙 Crypto"],
+    ["🥇 Đầu tư khác", "➕ Giao dịch"],
+    ["📜 Lịch sử", "🎯 Mục tiêu"],
+    ["📈 Báo cáo", "⚙️ Cài đặt"],
+    ["🤖 Trợ lý AI", "🏠 Trang chủ"]
+]
 
-    def run(self, user_id, data=None):
-        pm = PortfolioManager(user_id)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
+    await update.message.reply_text("💼 *QUẢN LÝ TÀI SẢN VÀ ĐẦU TƯ*", reply_markup=reply_markup, parse_mode="Markdown")
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    user_id = update.effective_user.id
+
+    # --- ƯU TIÊN 1: CÁC NÚT ĐIỀU HƯỚNG CHÍNH ---
+    if text in ["🏠 Trang chủ", "❌ Hủy", "🏠 Home", "💼 Tài sản của bạn", "⬅️ Back"]:
+        if 'dashboard' in modules:
+            result = modules['dashboard'].run(user_id)
+            await format_response(update, 'dashboard', result)
+            return
+
+    # --- ƯU TIÊN 2: BẮT CÁC LỆNH WIZARD CỦA STOCK ---
+    stock_keywords = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
+    if text in stock_keywords or text.lower().startswith(("xoa ", "gia ")):
+        if 'stock' in modules:
+            res_stock = modules['stock'].run(user_id, text)
+            if isinstance(res_stock, str):
+                await update.message.reply_text(res_stock)
+                refresh_pf = modules['stock'].run(user_id)
+                await format_response(update, 'stock', refresh_pf)
+            else:
+                await format_response(update, 'stock', res_stock)
+            return
+
+    # --- ƯU TIÊN 3: CÁC NÚT BẤM MENU CHÍNH ---
+    for m_id, m_instance in modules.items():
+        if m_instance.get_info()['name'] == text:
+            result = m_instance.run(user_id)
+            await format_response(update, m_id, result)
+            return
+
+    # --- ƯU TIÊN 4: XỬ LÝ GIAO DỊCH (TRANSACTION) ---
+    if 'transaction' in modules:
+        res = modules['transaction'].run(user_id, text)
+        if res == "EXIT_SIGNAL":
+            result = modules['dashboard'].run(user_id)
+            await format_response(update, 'dashboard', result)
+            return
+
+        if isinstance(res, str):
+            if any(x in res for x in ["Trang chủ", "thành công", "hủy", "ví tiền mặt"]):
+                result = modules['dashboard'].run(user_id)
+                await update.message.reply_text(res)
+                await format_response(update, 'dashboard', result)
+            else:
+                await update.message.reply_text(res)
+            return
+        elif isinstance(res, dict) and res.get("status") == "wizard":
+            await format_response(update, 'transaction', res)
+            return
+
+    await update.message.reply_text("❓ Tôi chưa hiểu lệnh này. Hãy chọn Menu hoặc nhập lệnh nhanh.")
+
+async def format_response(update: Update, m_id: str, result: dict):
+    """GIAO DIỆN HIỂN THỊ CHI TIẾT - ĐÃ FIX LỖI HIỂN THỊ 0đ"""
+    main_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
+
+    if m_id == "dashboard":
+        msg = (
+            f"💼 *TÀI SẢN CỦA BẠN*\n"
+            f"💰 Tổng: `{result.get('display_total', '0đ')}`\n"
+            f"📈 Lãi: `{result.get('display_profit', '0đ')}` ({result.get('profit_percent', '0%')})\n\n"
+            f"📊 Stock: {result.get('stock_val', '0đ')}\n"
+            f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
+            f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
+            f"🎯 Mục tiêu: `{result.get('goal_display', '500 triệu')}`\n"
+            f"Tiến độ: `{result.get('goal_progress', 0):,.1f}%`\n"
+            f"Còn thiếu: `{result.get('remain_display', '0đ')}`\n\n"
+            f"⬆️ Tổng nạp: {result.get('total_in', '0đ')}\n"
+            f"⬇️ Tổng rút: {result.get('total_out', '0đ')}\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🏦 Tiền mặt: {result.get('cash_val', '0đ')}\n"
+            f"📊 Cổ phiếu: {result.get('stock_val', '0đ')}\n"
+            f"🪙 Crypto: {result.get('crypto_val', '0đ')}\n"
+            f"🥇 Khác: {result.get('other_val', '0đ')}\n\n"
+            f"🏠 Bấm các nút dưới để quản lý chi tiết."
+        )
+        await update.message.reply_text(msg, reply_markup=main_markup, parse_mode="Markdown")
         
-        if data == "🔄 Cập nhật giá":
-            return {
-                "status": "wizard",
-                "message": "🔄 *CẬP NHẬT GIÁ THỊ TRƯỜNG*\n\nHãy nhập: `gia [Mã] [Giá]`\n*Ví dụ:* `gia VPB 22.5`",
-                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
-            }
-
-        if isinstance(data, str) and data.lower().startswith("gia "):
-            try:
-                parts = data.split(" ")
-                ticker = parts[1].upper()
-                price = float(parts[2]) * 1000
-                with db.get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT OR REPLACE INTO stock_prices (ticker, current_price) VALUES (?, ?)", (ticker, price))
-                    conn.commit()
-                return f"✅ Đã cập nhật giá mã *{ticker}* là `{price/1000:,.1f}k`."
-            except: 
-                return "⚠️ Cú pháp sai: `gia [Mã] [Giá]`"
-            
-        if data == "❌ Xóa mã":
-            return {
-                "status": "wizard",
-                "message": "❌ *XÓA DỮ LIỆU MÃ*\n\nHãy nhập: `xoa [Mã]`\n*Ví dụ:* `xoa HPG`.",
-                "buttons": ["📊 Cổ phiếu", "🏠 Trang chủ"]
-            }
-
-        if isinstance(data, str) and data.lower().startswith("xoa "):
-            try:
-                ticker_to_del = data.split(" ")[1].upper()
-                with db.get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM transactions WHERE user_id = ? AND ticker = ? AND asset_type = 'STOCK'", (user_id, ticker_to_del))
-                    conn.commit()
-                return f"✅ Đã xóa toàn bộ lịch sử mã *{ticker_to_del}*."
-            except:
-                return "⚠️ Lỗi khi xóa mã."
-
-        if data == "📈 Báo cáo nhóm":
-            pf_data = pm.get_stock_portfolio()
-            summary = pf_data['summary']
-            report = (
-                f"📈 *BÁO CÁO HIỆU SUẤT*\n\n"
-                f"💰 Vốn: `{self.format_money(summary['total_cost'])}`\n"
-                f"💵 Hiện tại: `{self.format_money(summary['total_value'])}`\n"
-                f"📊 Lãi/lỗ: *{self.format_money(summary['total_profit'])}* ({summary['total_roi']:+.2f}%)\n"
-            )
-            return {
-                "status": "wizard",
-                "message": report,
-                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
-            }
-
-        # HIỂN THỊ DANH MỤC MẶC ĐỊNH
-        pf_data = pm.get_stock_portfolio()
-        summary = pf_data['summary']
-        positions = pf_data['positions']
-        
-        if not positions:
-            msg = "📊 *DANH MỤC CỔ PHIẾU*\n\nBạn chưa có cổ phiếu nào."
-        else:
-            res = (
-                f"📊 *DANH MỤC CỔ PHIẾU*\n\n"
-                f"💰 Giá trị: *{self.format_money(summary['total_value'])}*\n"
-                f"📈 Lãi: {self.format_money(summary['total_profit'])} ({summary['total_roi']:+.1f}%)\n\n"
-            )
-            for p in positions:
-                res += f"*{p['ticker']}*: {p['qty']:,} | Lãi: {self.format_money(p['profit'])}\n"
-            msg = res
-
-        return {
-            "status": "wizard",
-            "message": msg,
-            "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
-        }
+    elif isinstance(result, dict) and result.get("status") == "wizard":
+        buttons = result["buttons"]
+        keyboard = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
+        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(result["message"], reply_markup=markup, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(str(result), reply_markup=main_markup, parse_mode="Markdown")
