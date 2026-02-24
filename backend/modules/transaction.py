@@ -11,7 +11,6 @@ class Module(BaseModule):
         return {"id": "transaction", "name": "➕ Giao dịch"}
 
     def run(self, user_id, data=None):
-        # 1. KHỞI TẠO MENU CHÍNH
         if not data:
             self.states[user_id] = {} 
             return {
@@ -21,19 +20,14 @@ class Module(BaseModule):
             }
 
         text = data.strip()
-        menu_buttons = ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "🏠 Trang chủ", "❌ Hủy", "Mua", "Bán"]
+        menu_buttons = ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "🏠 Trang chủ", "❌ Hủy", "Mua", "Bán", "Nạp", "Rút"]
         
-        # 2. ƯU TIÊN KIỂM TRA NÚT BẤM TRƯỚC (Để tránh lỗi Parser chặn nút)
         if text in menu_buttons:
             if text == "❌ Hủy" or text == "🏠 Trang chủ":
                 self.states[user_id] = {}
-                return "🏠 Quay lại màn hình chính." # Bot_client sẽ nhận diện chữ này để hiện Dashboard
-
-            # Reset state khi chọn luồng giao dịch mới
+                return "🏠 Quay lại màn hình chính."
             if text in ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác"]:
                 self.states[user_id] = {"flow": text, "step": "ask_ticker" if text != "💵 Tiền mặt" else "ask_side"}
-
-        # 3. CHỈ CHẠY PARSER NHANH NẾU KHÔNG PHẢI ĐANG BẤM NÚT MENU
         else:
             quick_res = self._parse_quick_command(user_id, text)
             if quick_res:
@@ -43,13 +37,11 @@ class Module(BaseModule):
         state = self.states.get(user_id, {})
         flow = state.get("flow")
 
-        # 4. ĐIỀU HƯỚNG WIZARD
         if flow in ["📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác"]:
             return self._handle_assets_wizard(user_id, text, state)
         if flow == "💵 Tiền mặt":
             return self._handle_cash_wizard(user_id, text, state)
-
-        return "❓ Cú pháp chưa đúng. Hãy chọn menu hoặc nhập lệnh nhanh (VD: hpg 100 28.5)."
+        return "❓ Không rõ yêu cầu. Hãy chọn menu."
 
     def _handle_assets_wizard(self, user_id, text, state):
         step = state.get("step")
@@ -57,35 +49,19 @@ class Module(BaseModule):
         a_type = a_map.get(state["flow"], "OTHER")
 
         if text == state["flow"]:
-            return {
-                "status": "wizard",
-                "message": f"📱 *{a_type} FLOW*\n➡️ Mã tài sản là gì?",
-                "buttons": ["🏠 Trang chủ", "❌ Hủy"]
-            }
-
+            return {"status": "wizard", "message": f"📱 *{a_type} FLOW*\n➡️ Mã tài sản là gì?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
         if step == "ask_ticker":
             state.update({"ticker": text.upper(), "step": "ask_side"})
-            return {
-                "status": "wizard",
-                "message": f"Mã: {text.upper()}\n➡️ Bạn muốn Mua hay Bán?",
-                "buttons": ["Mua", "Bán", "🏠 Trang chủ", "❌ Hủy"]
-            }
-
+            return {"status": "wizard", "message": f"Mã: {text.upper()}\n➡️ Bạn muốn Mua hay Bán?", "buttons": ["Mua", "Bán", "🏠 Trang chủ", "❌ Hủy"]}
         if step == "ask_side":
             if text not in ["Mua", "Bán"]: return "Vui lòng chọn Mua hoặc Bán."
             state.update({"side": 1 if text == "Mua" else -1, "step": "ask_amount"})
-            return {
-                "status": "wizard",
-                "message": f"➡️ Số lượng {'Mua' if text=='Mua' else 'Bán'} là bao nhiêu?",
-                "buttons": ["🏠 Trang chủ", "❌ Hủy"]
-            }
-
+            return {"status": "wizard", "message": "➡️ Số lượng bao nhiêu?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
         if step == "ask_amount":
             try:
                 state.update({"amount": float(text), "step": "ask_price"})
                 return {"status": "wizard", "message": "➡️ Giá giao dịch?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
             except: return "⚠️ Nhập số lượng bằng con số."
-
         if step == "ask_price":
             try:
                 res = self._save_to_db(user_id, a_type, state["ticker"], state["amount"] * state["side"], float(text))
@@ -96,15 +72,11 @@ class Module(BaseModule):
     def _handle_cash_wizard(self, user_id, text, state):
         step = state.get("step")
         if text == "💵 Tiền mặt":
-            return {
-                "status": "wizard",
-                "message": "📱 *CASH FLOW*\n➡️ Nạp hay Rút tiền?",
-                "buttons": ["Nạp", "Rút", "🏠 Trang chủ", "❌ Hủy"]
-            }
+            return {"status": "wizard", "message": "📱 *CASH FLOW*\n➡️ Bạn muốn Nạp hay Rút tiền?", "buttons": ["Nạp", "Rút", "🏠 Trang chủ", "❌ Hủy"]}
         if step == "ask_side":
             if text not in ["Nạp", "Rút"]: return "Vui lòng chọn Nạp hoặc Rút."
             state.update({"side": 1 if text == "Nạp" else -1, "step": "ask_value"})
-            return {"status": "wizard", "message": "➡️ Số tiền bao nhiêu?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
+            return {"status": "wizard", "message": f"➡️ Số tiền {text} bao nhiêu?", "buttons": ["🏠 Trang chủ", "❌ Hủy"]}
         if step == "ask_value":
             val = self._parse_value(text)
             if val == 0: return "⚠️ Số tiền không hợp lệ."
@@ -112,16 +84,14 @@ class Module(BaseModule):
             self.states[user_id] = {}
             return res
 
-    def _save_to_db(self, user_id, a_type, ticker, amount, price=1):
+    def _save_to_db(self, user_id, a_type, ticker, amount, price):
         total = amount * price
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("INSERT INTO transactions (user_id, asset_type, ticker, amount, price, total_value, date) VALUES (?,?,?,?,?,?,?)",
                            (user_id, a_type, ticker, amount, price, total, datetime.now().strftime("%Y-%m-%d")))
-            cursor.execute("INSERT OR IGNORE INTO assets (asset_type, value) VALUES (?, 0)", (a_type,))
-            cursor.execute("UPDATE assets SET value = value + ? WHERE asset_type = ?", (total, a_type))
             conn.commit()
-        return f"✅ Ghi nhận thành công {ticker}. Bấm 🏠 Trang chủ để xem Dashboard."
+        return "✅ Ghi nhận thành công. Bấm 🏠 Trang chủ để xem Dashboard."
 
     def _parse_quick_command(self, user_id, text):
         t = text.lower().strip()
