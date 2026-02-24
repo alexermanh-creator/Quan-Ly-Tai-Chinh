@@ -29,17 +29,26 @@ class Module(BaseModule):
                 "buttons": ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "🏠 Trang chủ", "❌ Hủy"]
             }
 
-        text = data.strip().replace(",", ".")
+        text = data.strip()
         
-        # --- BƯỚC 1: KIỂM TRA LỆNH NHANH (PARSER) ---
-        quick_res = self._parse_quick_command(user_id, text)
+        # --- BƯỚC 0: CHẶN CÁC LỆNH ĐIỀU HƯỚNG HỆ THỐNG ---
+        # Tránh việc Module Transaction "nuốt" mất các nút bấm Menu chính
+        NAV_COMMANDS = ["🏠 Trang chủ", "💼 Tài sản của bạn", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "📜 Lịch sử", "🎯 Mục tiêu", "📈 Báo cáo", "⚙️ Cài đặt"]
+        if text in NAV_COMMANDS:
+            self.states[user_id] = {}
+            return "EXIT_SIGNAL" # Tín hiệu để bot_client quay về Dashboard
+
+        text_clean = text.replace(",", ".")
+        
+        # --- BƯỚC 1: KIỂM TRA LỆNH NHANH ---
+        quick_res = self._parse_quick_command(user_id, text_clean)
         if quick_res:
             self.states[user_id] = {} 
             return quick_res
 
-        # --- BƯỚC 2: KIỂM TRA NÚT BẤM MENU ---
-        menu_buttons = ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "🏠 Trang chủ", "❌ Hủy", "Mua", "Bán", "Nạp", "Rút"]
-        if text in menu_buttons:
+        # --- BƯỚC 2: KIỂM TRA NÚT BẤM MENU CON ---
+        menu_internal = ["💵 Tiền mặt", "📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác", "❌ Hủy", "Mua", "Bán", "Nạp", "Rút", "🏠 Trang chủ"]
+        if text in menu_internal:
             if text in ["❌ Hủy", "🏠 Trang chủ"]:
                 self.states[user_id] = {}
                 return "🏠 Quay lại màn hình chính."
@@ -52,9 +61,9 @@ class Module(BaseModule):
         state = self.states.get(user_id, {})
         flow = state.get("flow")
         if flow in ["📊 Cổ phiếu", "🪙 Crypto", "🥇 Đầu tư khác"]:
-            return self._handle_assets_wizard(user_id, text, state)
+            return self._handle_assets_wizard(user_id, text_clean, state)
         if flow == "💵 Tiền mặt":
-            return self._handle_cash_wizard(user_id, text, state)
+            return self._handle_cash_wizard(user_id, text_clean, state)
 
         return "❓ Không rõ yêu cầu. Hãy chọn menu hoặc gõ lệnh nhanh (VD: nap 1ty, btc 0.1 70000)."
 
@@ -128,10 +137,8 @@ class Module(BaseModule):
     def _save_to_db(self, user_id, a_type, ticker, amount, price):
         total_val = amount * price
         cost_vnd = total_val * (self.EXCHANGE_RATE_USD if a_type == "CRYPTO" else 1)
-
         if a_type != "CASH" and amount > 0:
             if self._get_cash_balance(user_id) < cost_vnd: return "❌ Ôi Bạn Hết Tiền Rồi!!"
-
         with db.get_connection() as conn:
             cursor = conn.cursor()
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -140,7 +147,7 @@ class Module(BaseModule):
             if a_type != "CASH":
                 cash_impact = -cost_vnd
                 cursor.execute("INSERT INTO transactions (user_id, asset_type, ticker, amount, price, total_value, date) VALUES (?, 'CASH', ?, 1, ?, ?, ?)",
-                               (user_id, f"Mua/Bán {ticker}", cash_impact, cash_impact, now))
+                               (user_id, f"Trừ tiền mua {ticker}", cash_impact, cash_impact, now))
             conn.commit()
         return f"✅ Ghi nhận thành công. Đã cập nhật ví tiền mặt."
 
