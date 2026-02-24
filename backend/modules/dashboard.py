@@ -8,15 +8,12 @@ class Module(BaseModule):
     def format_currency(self, value):
         abs_val = abs(value)
         sign = "-" if value < 0 else ""
-        if abs_val >= 1000000000:
-            return f"{sign}{abs_val / 1000000000:,.2f} tỷ"
-        elif abs_val >= 1000000:
-            return f"{sign}{abs_val / 1000000:,.1f} triệu"
-        else:
-            return f"{sign}{abs_val:,.0f}đ"
+        if abs_val >= 10**9: return f"{sign}{value / 10**9:,.2f} tỷ"
+        if abs_val >= 10**6: return f"{sign}{value / 10**6:,.1f} triệu"
+        return f"{sign}{value:,.0f}đ"
 
     def run(self, user_id, data=None):
-        EXCHANGE_RATE_USD = 26300 
+        EX_RATE = 26300 
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT asset_type, SUM(total_value) FROM transactions WHERE user_id = ? GROUP BY asset_type', (user_id,))
@@ -24,7 +21,7 @@ class Module(BaseModule):
 
             cash = data_map.get('CASH', 0)
             stock = data_map.get('STOCK', 0)
-            crypto_vnd = data_map.get('CRYPTO', 0) * EXCHANGE_RATE_USD
+            crypto_vnd = data_map.get('CRYPTO', 0) * EX_RATE
             other = data_map.get('OTHER', 0)
             total = cash + stock + crypto_vnd + other
 
@@ -33,9 +30,8 @@ class Module(BaseModule):
             cursor.execute("SELECT SUM(total_value) FROM transactions WHERE user_id = ? AND asset_type = 'CASH' AND total_value < 0", (user_id,))
             t_out = abs(cursor.fetchone()[0] or 0)
 
-            net_invested = t_in - t_out
-            profit = total - net_invested
-            roi = (profit / net_invested * 100) if net_invested > 0 else 0
+            profit = total - (t_in - t_out)
+            roi = (profit / (t_in - t_out) * 100) if (t_in - t_out) > 0 else 0
 
             return {
                 "display_total": self.format_currency(total),
