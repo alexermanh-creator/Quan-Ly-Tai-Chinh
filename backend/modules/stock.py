@@ -7,9 +7,9 @@ class Module(BaseModule):
         return {"id": "stock", "name": "📊 Cổ phiếu"}
 
     def can_handle(self, text):
-        """Hàm quan trọng: Giúp bot_client chuyển hướng tin nhắn vào đây"""
-        btns = ["📊 Cổ phiếu", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
-        return text in btns or text.lower().startswith(("gia ", "xoa "))
+        """Module tự nhận diện lệnh của chính nó"""
+        stock_btns = ["🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã"]
+        return text in stock_btns or text.lower().startswith(("gia ", "xoa "))
 
     def format_money(self, val):
         abs_val = abs(val)
@@ -25,12 +25,12 @@ class Module(BaseModule):
     def run(self, user_id, data=None):
         pm = PortfolioManager(user_id)
         
-        # --- 1. XỬ LÝ LỆNH TỪ MENU CON ---
+        # 1. XỬ LÝ LỆNH TỪ NÚT BẤM HOẶC TIN NHẮN
         if data == "🔄 Cập nhật giá":
             return {
                 "status": "wizard",
                 "message": "🔄 *CẬP NHẬT GIÁ THỊ TRƯỜNG*\n\nHãy nhập theo cú pháp: `gia [Mã] [Giá]`\n(Đơn vị là nghìn đồng)\n\n*Ví dụ:* `gia VPB 22.5` (tương ứng 22,500đ)",
-                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
+                "buttons": ["📊 Cổ phiếu", "🏠 Trang chủ"]
             }
 
         if isinstance(data, str) and data.lower().startswith("gia "):
@@ -42,9 +42,9 @@ class Module(BaseModule):
                     cursor = conn.cursor()
                     cursor.execute("INSERT OR REPLACE INTO stock_prices (ticker, current_price) VALUES (?, ?)", (ticker, price))
                     conn.commit()
-                return f"✅ Đã cập nhật giá thị trường mã *{ticker}* là `{price/1000:,.1f}k`. Bấm [📊 Cổ phiếu] để xem thay đổi."
+                return f"✅ Đã cập nhật giá thị trường mã *{ticker}* là `{price/1000:,.1f}k`."
             except: 
-                return "⚠️ Cú pháp sai. Hãy nhập: `gia [Mã] [Giá]`"
+                return "⚠️ Cú pháp sai: `gia [Mã] [Giá]`"
             
         if data == "❌ Xóa mã":
             return {
@@ -69,24 +69,19 @@ class Module(BaseModule):
             summary = pf_data['summary']
             if not pf_data['positions']:
                 return "⚠️ Bạn chưa có dữ liệu để lập báo cáo."
-                
             report = (
                 f"📈 *BÁO CÁO HIỆU SUẤT CỔ PHIẾU*\n\n"
                 f"💰 Tổng vốn ròng: `{self.format_money(summary['total_cost'])}`\n"
                 f"💵 Giá trị hiện tại: `{self.format_money(summary['total_value'])}`\n"
                 f"📊 Tổng lãi/lỗ: *{self.format_money(summary['total_profit'])}*\n"
                 f"🚀 Tỷ suất (ROI): `{summary['total_roi']:+.2f}%`\n\n"
-                f"⬆️ Tổng tiền nạp: {self.format_money(pf_data['total_in'])}\n"
-                f"⬇️ Tổng tiền rút: {self.format_money(pf_data['total_out'])}\n\n"
+                f"⬆️ Tổng nạp: {self.format_money(pf_data['total_in'])}\n"
+                f"⬇️ Tổng rút: {self.format_money(pf_data['total_out'])}\n\n"
                 f"🔥 *Đánh giá:* " + ("Danh mục đang tăng trưởng tốt!" if summary['total_roi'] > 0 else "Cần rà soát lại các mã yếu kém.")
             )
-            return {
-                "status": "wizard",
-                "message": report,
-                "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "🏠 Trang chủ"]
-            }
+            return { "status": "wizard", "message": report, "buttons": ["📊 Cổ phiếu", "🏠 Trang chủ"] }
 
-        # --- 2. HIỂN THỊ DANH MỤC (LAYOUT GỐC CỦA BẠN) ---
+        # 2. HIỂN THỊ DANH MỤC (LAYOUT GỐC)
         pf_data = pm.get_stock_portfolio()
         summary = pf_data['summary']
         positions = pf_data['positions']
@@ -102,14 +97,12 @@ class Module(BaseModule):
                 f"⬆️ Tổng nạp: {self.format_money(pf_data['total_in'])}\n"
                 f"⬇️ Tổng rút: {self.format_money(pf_data['total_out'])}\n\n"
             )
-
             if summary.get('best'):
                 res += f"🏆 Mã tốt nhất: {summary['best']['ticker']} ({summary['best']['roi']:+.1f}%)\n"
                 res += f"📉 Mã kém nhất: {summary['worst']['ticker']} ({summary['worst']['roi']:+.1f}%)\n"
                 weight = (summary['largest']['market_value'] / summary['total_value'] * 100) if summary['total_value'] > 0 else 0
                 res += f"📊 Tỉ trọng lớn nhất: {summary['largest']['ticker']} ({weight:.0f}%)\n"
                 res += "────────────\n"
-
             for p in positions:
                 res += (
                     f"\n*{p['ticker']}*\n"
