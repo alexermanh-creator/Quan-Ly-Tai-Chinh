@@ -96,4 +96,5 @@ class Module(BaseModule):
         return {
             "status": "wizard",
             "message": msg,
-            "buttons
+            "buttons": ["➕ Giao dịch", "🔄 Cập nhật giá", "📈 Báo cáo nhóm", "❌ Xóa mã", "⬅️ Back"]
+        }
